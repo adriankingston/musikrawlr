@@ -5,7 +5,7 @@
   const el = {
     q: $('#q'), results: $('#results'), panel: $('#panel'), empty: $('#empty'),
     legend: $('#legend'), status: $('#status'), tip: $('#tip'), stage: $('#stage'),
-    fit: $('#fit'), clear: $('#clear'), themeSwitch: $('#theme-switch'),
+    fit: $('#fit'), clear: $('#clear'), glow: $('#glow'),
     credit: $('#credit'), timebar: $('#timebar'), tbPlay: $('#tb-play'),
     tbYear: $('#tb-year'), tbRange: $('#tb-range'), tbHist: $('#tb-hist'), tbAll: $('#tb-all'),
   };
@@ -23,27 +23,6 @@
     }
     return r.json();
   }
-
-  // ---------- Theme ----------
-  const THEME_KEY = 'bandgraph.theme';
-  const theme = () => (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
-  function setTheme(t) {
-    document.documentElement.dataset.theme = t;
-    try { localStorage.setItem(THEME_KEY, t); } catch { /* private mode */ }
-    syncThemeSwitch();
-    cy.style().fromJson(cyStyle()).update();
-    if (!el.timebar.hidden) drawHist();
-  }
-  function syncThemeSwitch() {
-    el.themeSwitch.dataset.on = theme();
-    for (const b of el.themeSwitch.querySelectorAll('button')) {
-      b.setAttribute('aria-checked', String(b.dataset.themeOpt === theme()));
-    }
-  }
-  el.themeSwitch.addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-theme-opt]');
-    if (b) setTheme(b.dataset.themeOpt);
-  });
 
   // ---------- Graph style ----------
   // Relationship type → visual class. Everything else renders as a faint "other".
@@ -68,29 +47,21 @@
 
   // Each expanded BAND claims the next hue; its membership edges inherit it,
   // so scenes read as colour fields and shared musicians become the seams.
-  const HUB_HUES = {
-    dark: ['#e8537a', '#f2a03d', '#4cd97b', '#2ee6c8', '#4aa8ff', '#8f7bff', '#c85cff', '#ff7ab6', '#9adf4e', '#ffd166'],
-    light: ['#c9325c', '#cf7d13', '#22964d', '#0aa38e', '#2b7fd4', '#6a58d8', '#9a36cf', '#d44f92', '#6fa627', '#c79a00'],
-  };
+  const HUB_HUES = ['#e8537a', '#f2a03d', '#4cd97b', '#2ee6c8', '#4aa8ff', '#8f7bff', '#c85cff', '#ff7ab6', '#9adf4e', '#ffd166'];
   let hueCounter = 0;
 
-  const pal = () => (theme() === 'dark' ? {
+  const PAL = {
     leaf: '#aac0ca', personHub: '#ffd166',
     label: '#e5edf0', outline: '#111d22',
     member: '#7e97a2', family: '#ff8fa3', collab: '#2ee6c8', other: '#445b64',
     sel: '#ffffff', loading: '#2ee6c8', core: '#ffffff',
-  } : {
-    leaf: '#8d94ad', personHub: '#b0851f',
-    label: '#21252d', outline: '#f6f4ee',
-    member: '#9aa3b2', family: '#e0708a', collab: '#0aa38e', other: '#c2c8d4',
-    sel: '#20242c', loading: '#0aa38e', core: '#ffffff',
-  });
+  };
+  const pal = () => PAL;
 
   function hueOf(n) {
     const i = n.data('hueIdx');
     if (i == null) return null;
-    const hues = HUB_HUES[theme() === 'dark' ? 'dark' : 'light'];
-    return hues[i % hues.length];
+    return HUB_HUES[i % HUB_HUES.length];
   }
 
   function nodeColor(n) {
@@ -108,13 +79,11 @@
     return '#' + ((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1);
   }
 
-  // Every node gets a diffused bloom; hubs blend their hue toward white so
-  // the glow reads as light, not paint. On paper (light theme) white is
-  // invisible, so hubs glow in their hue and leaves in soft slate.
+  // Glow colour: hubs pool light in their own hue (nudged toward white so it
+  // reads as light, not paint); leaves glow starlight blue-white.
   function glowColor(n) {
-    const hue = hueOf(n) || (n.hasClass('expanded') ? pal().personHub : null);
-    if (theme() === 'dark') return hue ? mixHex(hue, '#ffffff', 0.6) : '#ffffff';
-    return hue || '#8d94ad';
+    const hue = hueOf(n) || (n.hasClass('expanded') ? PAL.personHub : null);
+    return hue ? mixHex(hue, '#ffffff', 0.3) : '#dcecff';
   }
 
   function nodeSize(n) {
@@ -143,7 +112,6 @@
 
   function cyStyle() {
     const p = pal();
-    const dark = theme() === 'dark';
     return [
       { selector: 'node', style: {
         width: nodeSize,
@@ -162,24 +130,15 @@
         'text-opacity': 0,
         'border-width': 0,
         'overlay-opacity': 0,
-        // The all-points diffused bloom.
-        'underlay-color': glowColor,
-        'underlay-opacity': dark ? 0.16 : 0.1,
-        'underlay-padding': 5,
-        'underlay-shape': 'ellipse',
       } },
       // Labels only where they earn their place: hubs, bridges, hover, selection.
       { selector: 'node.expanded, node.notable, node.hover, node.seed, node:selected', style: {
         'text-opacity': 1,
       } },
       { selector: 'node.expanded', style: {
-        'underlay-color': glowColor,
-        'underlay-opacity': dark ? 0.26 : 0.15,
-        'underlay-padding': (n) => 7 + (n.data('deg') || 0) * 0.7,
-        'underlay-shape': 'ellipse',
         'border-width': 1.5,
         'border-color': p.core,
-        'border-opacity': dark ? 0.9 : 0.75,
+        'border-opacity': 0.9,
       } },
       { selector: 'node.loading', style: {
         'border-width': 3, 'border-style': 'dashed', 'border-color': p.loading, 'border-opacity': 1,
@@ -188,10 +147,6 @@
         'border-width': 2.5,
         'border-color': p.sel,
         'border-opacity': 1,
-        'underlay-color': glowColor,
-        'underlay-opacity': dark ? 0.34 : 0.2,
-        'underlay-padding': (n) => 9 + (n.data('deg') || 0) * 0.7,
-        'underlay-shape': 'ellipse',
       } },
       { selector: 'edge', style: {
         'curve-style': 'unbundled-bezier',
@@ -249,8 +204,63 @@
   // cytoscape's cached viewport dimensions honest or fit() breaks silently.
   new ResizeObserver(() => {
     cy.resize();
+    queueGlow();
     if (!el.timebar.hidden) drawHist();
   }).observe($('#cy'));
+
+  // ---------- Ambient glow layer ----------
+  // A canvas UNDER the graph: every node pools light with a wide, eased
+  // radial falloff, blended additively so neighbouring glows merge into
+  // nebulae. Redrawn (rAF-throttled) after every cytoscape render frame.
+  const glowCtx = el.glow.getContext('2d');
+  let glowQueued = false;
+
+  function hexToRgb(hex) {
+    const v = parseInt(hex.slice(1), 16);
+    return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+  }
+
+  function drawGlow() {
+    glowQueued = false;
+    const w = el.stage.clientWidth;
+    const h = el.stage.clientHeight;
+    if (!w || !h) return;
+    const dpr = window.devicePixelRatio || 1;
+    if (el.glow.width !== Math.round(w * dpr) || el.glow.height !== Math.round(h * dpr)) {
+      el.glow.width = Math.round(w * dpr);
+      el.glow.height = Math.round(h * dpr);
+    }
+    glowCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    glowCtx.clearRect(0, 0, w, h);
+    glowCtx.globalCompositeOperation = 'lighter';
+    const zoom = cy.zoom();
+    cy.nodes().forEach((n) => {
+      const pos = n.renderedPosition();
+      const r0 = (nodeSize(n) * zoom) / 2;
+      const R = Math.min(340, Math.max(34, r0 * (n.hasClass('expanded') ? 8 : 6)));
+      if (pos.x < -R || pos.y < -R || pos.x > w + R || pos.y > h + R) return;
+      let a = n.hasClass('expanded') ? 0.44 : 0.26;
+      if (n.selected()) a *= 1.5;
+      if (n.hasClass('t-dim')) a *= 0.08;
+      const [cr, cg, cb] = hexToRgb(glowColor(n));
+      const g = glowCtx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, R);
+      g.addColorStop(0, `rgba(${cr},${cg},${cb},${a * 0.5})`);
+      g.addColorStop(0.15, `rgba(${cr},${cg},${cb},${a * 0.3})`);
+      g.addColorStop(0.4, `rgba(${cr},${cg},${cb},${a * 0.12})`);
+      g.addColorStop(0.72, `rgba(${cr},${cg},${cb},${a * 0.035})`);
+      g.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+      glowCtx.fillStyle = g;
+      glowCtx.fillRect(pos.x - R, pos.y - R, R * 2, R * 2);
+    });
+    glowCtx.globalCompositeOperation = 'source-over';
+  }
+
+  function queueGlow() {
+    if (glowQueued) return;
+    glowQueued = true;
+    requestAnimationFrame(drawGlow);
+  }
+  cy.on('render', queueGlow);
 
   // ---------- Graph building ----------
   const expanded = new Set();
@@ -914,6 +924,6 @@
   });
 
   // ---------- Boot ----------
-  syncThemeSwitch();
   updateOverlays();
+  queueGlow();
 })();

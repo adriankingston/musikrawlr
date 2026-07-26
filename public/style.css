@@ -1,4 +1,4 @@
-/* Band graph — one stylesheet, light + dark via tokens on <html data-theme>. */
+/* Band graph — single dark design, teal-charcoal starfield. */
 
 @font-face {
   font-family: 'Cal Sans';
@@ -18,21 +18,6 @@
 }
 
 :root {
-  --bg: #f7f6f3;
-  --surface: #ffffff;
-  --line: #e4e2dc;
-  --text: #21252d;
-  --muted: #6d7380;
-  --accent: #0cb0a9;
-  --navy: #073b4c;
-  --person: #f78c6b;
-  --group: #118ab2;
-  --warn: #ef476f;
-  --chip: #eeece7;
-  --shadow: 0 10px 30px rgba(15, 23, 42, .14);
-  --radius: 12px;
-}
-:root[data-theme="dark"] {
   --bg: #111d22;
   --surface: #17262d;
   --line: #263a43;
@@ -45,6 +30,7 @@
   --warn: #ff6b8f;
   --chip: #1c2f37;
   --shadow: 0 10px 30px rgba(0, 6, 8, .6);
+  --radius: 12px;
 }
 
 * { box-sizing: border-box; }
@@ -147,53 +133,26 @@ body {
 }
 .btn:hover { border-color: var(--accent); color: var(--accent); }
 
-/* Segmented Light | Dark switch */
-#theme-switch {
-  position: relative;
-  display: flex;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--bg);
-  padding: 2px;
-}
-#theme-switch button {
-  position: relative;
-  z-index: 1;
-  border: 0;
-  background: none;
-  color: var(--muted);
-  font: inherit;
-  font-size: 12.5px;
-  padding: 4px 12px;
-  cursor: pointer;
-  border-radius: 999px;
-}
-#theme-switch button[aria-checked="true"] { color: var(--text); font-weight: 600; }
-#theme-switch .knob {
-  position: absolute;
-  top: 2px;
-  bottom: 2px;
-  width: calc(50% - 2px);
-  border-radius: 999px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  transition: left .18s ease;
-  left: 2px;
-}
-#theme-switch[data-on="dark"] .knob { left: 50%; }
-
 /* ---------- Layout ---------- */
 main { flex: 1; display: flex; min-height: 0; }
-#stage { position: relative; flex: 1; min-width: 0; }
-#cy {
-  position: absolute;
-  inset: 0;
-  /* Starfield vignette behind the (transparent) graph canvas. */
-  background: radial-gradient(140% 120% at 42% 38%, #fdfdfb 0%, #f2f0ea 60%, #eae7de 100%);
-}
-:root[data-theme="dark"] #cy {
+#stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  /* Starfield vignette; the glow canvas and graph stack above it. */
   background: radial-gradient(140% 120% at 42% 38%, #1a2b33 0%, #111d22 52%, #0b1418 100%);
 }
+#glow {
+  position: absolute;
+  inset: 0;
+  /* Canvas is a replaced element: inset alone won't stretch it, and the
+     retina-sized bitmap would spill past the stage. */
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+#cy { position: absolute; inset: 0; z-index: 1; }
 
 #panel {
   width: 320px;
@@ -208,6 +167,7 @@ main { flex: 1; display: flex; min-height: 0; }
 .empty {
   position: absolute;
   inset: 0;
+  z-index: 5;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -347,6 +307,7 @@ main { flex: 1; display: flex; min-height: 0; }
   position: absolute;
   right: 10px;
   bottom: 10px;
+  z-index: 5;
   font-size: 11.5px;
   color: var(--muted);
 }
