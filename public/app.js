@@ -75,9 +75,9 @@
   let hueCounter = 0;
 
   const pal = () => (theme() === 'dark' ? {
-    leaf: '#a9b1d6', personHub: '#ffd166',
-    label: '#e6e8f7', outline: '#0d1032',
-    member: '#7d87a8', family: '#ff8fa3', collab: '#2ee6c8', other: '#4a5178',
+    leaf: '#aac0ca', personHub: '#ffd166',
+    label: '#e5edf0', outline: '#111d22',
+    member: '#7e97a2', family: '#ff8fa3', collab: '#2ee6c8', other: '#445b64',
     sel: '#ffffff', loading: '#2ee6c8', core: '#ffffff',
   } : {
     leaf: '#8d94ad', personHub: '#b0851f',
