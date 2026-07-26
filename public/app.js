@@ -63,58 +63,139 @@
     'teacher': 'collab',
   };
 
+  // Each expanded BAND claims the next hue; its membership edges inherit it,
+  // so scenes read as colour fields and shared musicians become the seams.
+  const HUB_HUES = {
+    dark: ['#e8537a', '#f2a03d', '#4cd97b', '#2ee6c8', '#4aa8ff', '#8f7bff', '#c85cff', '#ff7ab6', '#9adf4e', '#ffd166'],
+    light: ['#c9325c', '#cf7d13', '#22964d', '#0aa38e', '#2b7fd4', '#6a58d8', '#9a36cf', '#d44f92', '#6fa627', '#c79a00'],
+  };
+  let hueCounter = 0;
+
+  const pal = () => (theme() === 'dark' ? {
+    leaf: '#a9b1d6', personHub: '#ffd166',
+    label: '#e6e8f7', outline: '#0d1032',
+    member: '#7d87a8', family: '#ff8fa3', collab: '#2ee6c8', other: '#4a5178',
+    sel: '#ffffff', loading: '#2ee6c8', core: '#ffffff',
+  } : {
+    leaf: '#8d94ad', personHub: '#b0851f',
+    label: '#21252d', outline: '#f6f4ee',
+    member: '#9aa3b2', family: '#e0708a', collab: '#0aa38e', other: '#c2c8d4',
+    sel: '#20242c', loading: '#0aa38e', core: '#ffffff',
+  });
+
+  function hueOf(n) {
+    const i = n.data('hueIdx');
+    if (i == null) return null;
+    const hues = HUB_HUES[theme() === 'dark' ? 'dark' : 'light'];
+    return hues[i % hues.length];
+  }
+
+  function nodeColor(n) {
+    const p = pal();
+    return hueOf(n) || (n.hasClass('expanded') ? p.personHub : p.leaf);
+  }
+
+  function nodeSize(n) {
+    const deg = n.data('deg') || 0;
+    return n.hasClass('expanded')
+      ? Math.min(34 + deg * 2.4, 64)
+      : Math.min(13 + deg * 3, 30);
+  }
+
+  // Gentle per-edge arc (deterministic from the id) — organic, not spokes.
+  function edgeArc(e) {
+    let h = 0;
+    const id = e.id();
+    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+    const mag = 16 + (Math.abs(h) % 3) * 9;
+    return (h % 2 ? mag : -mag);
+  }
+
+  function edgeColor(e) {
+    const p = pal();
+    if (e.data('cls') !== 'member') return null;
+    const t = cy.getElementById(e.data('target'));
+    const s = cy.getElementById(e.data('source'));
+    return hueOf(t) || hueOf(s) || p.member;
+  }
+
   function cyStyle() {
-    const p = theme() === 'dark' ? {
-      person: '#f99e7e', group: '#58c4ec', unknown: '#7d828d',
-      label: '#e9e7e2', outline: '#131519',
-      member: '#8b95a6', family: '#f99e7e', collab: '#2ad0cb', other: '#535a67',
-      ring: '#34e2ad', sel: '#ffd166',
-    } : {
-      person: '#f78c6b', group: '#118ab2', unknown: '#98a0ad',
-      label: '#21252d', outline: '#f7f6f3',
-      member: '#8b95a6', family: '#f78c6b', collab: '#0cb0a9', other: '#c6ccd6',
-      ring: '#06d6a0', sel: '#d99a00',
-    };
+    const p = pal();
     return [
       { selector: 'node', style: {
-        width: 'mapData(deg, 0, 12, 26, 58)',
-        height: 'mapData(deg, 0, 12, 26, 58)',
-        'background-color': p.unknown,
+        width: nodeSize,
+        height: nodeSize,
+        'background-color': nodeColor,
         label: 'data(label)',
-        'font-size': 11,
-        'font-family': 'system-ui, sans-serif',
+        'font-size': (n) => (n.hasClass('expanded') ? 14 : 11),
+        'font-family': 'Cal Sans, system-ui, sans-serif',
         color: p.label,
         'text-outline-color': p.outline,
         'text-outline-width': 2,
         'text-valign': 'bottom',
         'text-margin-y': 7,
         'text-wrap': 'wrap',
-        'text-max-width': 120,
+        'text-max-width': 130,
+        'text-opacity': 0,
         'border-width': 0,
         'overlay-opacity': 0,
       } },
-      { selector: 'node[kind="person"]', style: { 'background-color': p.person } },
-      { selector: 'node[kind="group"]', style: { 'background-color': p.group } },
-      { selector: 'node.expanded', style: { 'border-width': 3, 'border-color': p.ring } },
-      { selector: 'node.loading', style: { 'border-width': 3, 'border-style': 'dashed', 'border-color': p.sel } },
-      { selector: 'node:selected', style: { 'border-width': 4, 'border-color': p.sel } },
+      // Labels only where they earn their place: hubs, bridges, hover, selection.
+      { selector: 'node.expanded, node.notable, node.hover, node.seed, node:selected', style: {
+        'text-opacity': 1,
+      } },
+      { selector: 'node.expanded', style: {
+        'underlay-color': nodeColor,
+        'underlay-opacity': theme() === 'dark' ? 0.18 : 0.14,
+        'underlay-padding': (n) => 7 + (n.data('deg') || 0) * 0.7,
+        'underlay-shape': 'ellipse',
+        'border-width': 1.5,
+        'border-color': p.core,
+        'border-opacity': theme() === 'dark' ? 0.9 : 0.75,
+      } },
+      { selector: 'node.loading', style: {
+        'border-width': 3, 'border-style': 'dashed', 'border-color': p.loading, 'border-opacity': 1,
+      } },
+      { selector: 'node:selected', style: {
+        'border-width': 2.5,
+        'border-color': p.sel,
+        'border-opacity': 1,
+        'underlay-color': nodeColor,
+        'underlay-opacity': theme() === 'dark' ? 0.32 : 0.2,
+        'underlay-padding': (n) => 9 + (n.data('deg') || 0) * 0.7,
+        'underlay-shape': 'ellipse',
+      } },
       { selector: 'edge', style: {
-        'curve-style': 'bezier',
-        width: 1.3,
+        'curve-style': 'unbundled-bezier',
+        'control-point-distances': edgeArc,
+        'control-point-weights': 0.5,
+        width: 1.1,
         'line-color': p.other,
+        'line-opacity': 0.45,
         'line-style': 'dashed',
         label: 'data(years)',
-        'font-size': 9,
+        'font-size': 8.5,
+        'font-family': 'system-ui, sans-serif',
         color: p.label,
         'text-outline-color': p.outline,
         'text-outline-width': 1.5,
         'text-rotation': 'autorotate',
+        'text-opacity': 0,
         'overlay-opacity': 0,
       } },
-      { selector: 'edge[cls="member"]', style: { width: 2.6, 'line-style': 'solid', 'line-color': p.member } },
-      { selector: 'edge[cls="family"]', style: { width: 2, 'line-style': 'dotted', 'line-color': p.family } },
-      { selector: 'edge[cls="collab"]', style: { width: 1.8, 'line-style': 'dashed', 'line-color': p.collab } },
-      { selector: 'edge:selected', style: { 'line-color': p.sel, width: 3.2 } },
+      { selector: 'edge[cls="member"]', style: {
+        width: 1.7, 'line-style': 'solid', 'line-color': edgeColor, 'line-opacity': 0.6,
+      } },
+      { selector: 'edge[cls="family"]', style: {
+        width: 1.6, 'line-style': 'dotted', 'line-color': p.family, 'line-opacity': 0.8,
+      } },
+      { selector: 'edge[cls="collab"]', style: {
+        width: 1.4, 'line-style': 'dashed', 'line-color': p.collab, 'line-opacity': 0.55,
+      } },
+      // Highlighted: edges of the hovered/selected node — labels appear here.
+      { selector: 'edge.hl, edge:selected', style: {
+        'line-opacity': 1, width: 2.4, 'text-opacity': 1,
+      } },
     ];
   }
 
@@ -170,6 +251,11 @@
     if (a.type) node.data('kind', kindOf(a.type));
     if (a.disambiguation) node.data('disambiguation', a.disambiguation);
     node.addClass('expanded');
+    // Expanded bands claim the next hue; their member edges pick it up
+    // automatically (edge colour is resolved per-render from the endpoints).
+    if (node.data('kind') === 'group' && node.data('hueIdx') == null) {
+      node.data('hueIdx', hueCounter++);
+    }
     const pos = node.position();
     let added = 0;
     const rels = (a.relations || []).filter((r) => r.artist && r.artist.id !== a.id);
@@ -203,7 +289,11 @@
       } });
       added++;
     }
-    cy.nodes().forEach((n) => n.data('deg', Math.min(n.degree(false), 12)));
+    cy.nodes().forEach((n) => {
+      n.data('deg', Math.min(n.degree(false), 12));
+      // Musicians linked into 3+ things are the bridges — label them.
+      n.toggleClass('notable', n.data('kind') === 'person' && n.degree(false) >= 3);
+    });
     updateOverlays();
     runLayout();
     return added;
@@ -384,7 +474,11 @@
   }
 
   // ---------- Graph events ----------
-  cy.on('select', 'node', (e) => renderPanelNode(e.target));
+  cy.on('select', 'node', (e) => {
+    renderPanelNode(e.target);
+    e.target.connectedEdges().addClass('hl');
+  });
+  cy.on('unselect', 'node', (e) => e.target.connectedEdges().removeClass('hl'));
   cy.on('select', 'edge', (e) => renderPanelEdge(e.target));
   cy.on('unselect', () => setTimeout(() => { if (cy.$(':selected').empty()) panelEmpty(); }, 0));
 
@@ -413,16 +507,26 @@
   const hideTip = () => { el.tip.hidden = true; };
   cy.on('mouseover', 'node', (e) => {
     const n = e.target;
+    n.addClass('hover');
+    n.connectedEdges().addClass('hl');
     const sub = n.data('disambiguation') || (n.data('kind') === 'person' ? 'Musician' : n.data('kind') === 'group' ? 'Band' : '');
     const hint = expanded.has(n.id()) ? '' : '<div class="t-sub">Double-click to expand</div>';
     showTip(`<strong>${esc(n.data('name'))}</strong>${sub ? `<div class="t-sub">${esc(sub)}</div>` : ''}${hint}`, e);
   });
+  cy.on('mouseout', 'node', (e) => {
+    e.target.removeClass('hover');
+    e.target.connectedEdges().not(cy.$('node:selected').connectedEdges()).removeClass('hl');
+  });
   cy.on('mouseover', 'edge', (e) => {
+    e.target.addClass('hl');
     const d = e.target.data();
     const s = cy.getElementById(d.source).data('name');
     const t = cy.getElementById(d.target).data('name');
     const sub = [d.years, d.attrs].filter(Boolean).join(' · ');
     showTip(`<strong>${esc(s)}</strong> ${esc(d.type)} <strong>${esc(t)}</strong>${sub ? `<div class="t-sub">${esc(sub)}</div>` : ''}`, e);
+  });
+  cy.on('mouseout', 'edge', (e) => {
+    if (!e.target.selected() && !e.target.connectedNodes(':selected').length) e.target.removeClass('hl');
   });
   cy.on('mouseout', 'node, edge', hideTip);
   cy.on('viewport', hideTip);
@@ -498,6 +602,7 @@
     const n = ensureNode(a, {
       renderedPosition: { x: el.stage.clientWidth / 2, y: el.stage.clientHeight / 2 },
     });
+    n.addClass('seed');
     updateOverlays();
     cy.$(':selected').unselect();
     n.select();
@@ -526,6 +631,7 @@
   el.clear.addEventListener('click', () => {
     cy.elements().remove();
     expanded.clear();
+    hueCounter = 0;
     panelEmpty();
     updateOverlays();
     setStatus('');
