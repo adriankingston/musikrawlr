@@ -157,7 +157,6 @@
         'font-size': 8.5,
         'font-family': 'system-ui, sans-serif',
         color: p.label,
-        'text-rotation': 'autorotate',
         'text-opacity': 0,
         'overlay-opacity': 0,
       } },
