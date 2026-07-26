@@ -40,9 +40,30 @@ const inflight = new Map();
 let queueTail = Promise.resolve();
 let lastFetchAt = 0;
 
+const cachePathFor = (url) =>
+  path.join(CACHE_DIR, crypto.createHash('sha1').update(url).digest('hex') + '.json');
+
+// Cached fetch for non-MusicBrainz hosts (Wikidata, Wikipedia): disk cache +
+// in-flight dedup + identifying UA, but no rate-limit queue.
+function webFetch(url) {
+  const file = cachePathFor(url);
+  try { return Promise.resolve(JSON.parse(fs.readFileSync(file, 'utf8'))); } catch { /* not cached */ }
+  if (inflight.has(url)) return inflight.get(url);
+  const p = (async () => {
+    const res = await fetch(url, { headers: { 'User-Agent': UA } });
+    if (!res.ok) throw new Error(`Upstream ${res.status}`);
+    const data = await res.json();
+    fs.writeFile(file, JSON.stringify(data), () => {});
+    return data;
+  })();
+  inflight.set(url, p);
+  p.catch(() => {}).then(() => inflight.delete(url));
+  return p;
+}
+
 function mbFetch(pathAndQuery) {
   const url = MB + pathAndQuery + (pathAndQuery.includes('?') ? '&' : '?') + 'fmt=json';
-  const file = path.join(CACHE_DIR, crypto.createHash('sha1').update(url).digest('hex') + '.json');
+  const file = cachePathFor(url);
   try { return Promise.resolve(JSON.parse(fs.readFileSync(file, 'utf8'))); } catch { /* not cached */ }
   if (inflight.has(url)) return inflight.get(url);
 
@@ -108,9 +129,54 @@ async function apiArtist(req, res, url) {
   sendJson(res, 200, data);
 }
 
+// Best-effort enrichment for the detail panel. MusicBrainz gives us the
+// Wikidata id (exact match, no fuzzy name lookups) and the release groups;
+// Wikidata gives the enwiki title + portrait (P18); Wikipedia's REST summary
+// gives the bio extract. Cover art URLs are built client-side against the
+// keyless Cover Art Archive. Every upstream response is disk-cached.
+async function apiEnrich(req, res, url) {
+  const id = (url.searchParams.get('id') || '').trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) {
+    return sendJson(res, 400, { error: 'Invalid MBID' });
+  }
+  const artist = await mbFetch(`artist/${id}?inc=url-rels+release-groups`);
+  const out = { wikipedia: null, image: null, releaseGroups: [] };
+
+  out.releaseGroups = (artist['release-groups'] || [])
+    .filter((rg) => rg['primary-type'] === 'Album' && !(rg['secondary-types'] || []).length)
+    .sort((a, b) => (a['first-release-date'] || '9999').localeCompare(b['first-release-date'] || '9999'))
+    .slice(0, 8)
+    .map((rg) => ({ id: rg.id, title: rg.title, year: (rg['first-release-date'] || '').slice(0, 4) }));
+
+  const wd = (artist.relations || []).find((r) => r.type === 'wikidata' && r.url);
+  const qid = wd ? (wd.url.resource.match(/(Q\d+)/) || [])[1] : null;
+  if (qid) {
+    try {
+      const sl = await webFetch(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${qid}&props=sitelinks&sitefilter=enwiki&format=json`);
+      const title = sl.entities?.[qid]?.sitelinks?.enwiki?.title;
+      const pc = await webFetch(`https://www.wikidata.org/w/api.php?action=wbgetclaims&entity=${qid}&property=P18&format=json`);
+      const p18 = pc.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
+      if (p18) {
+        out.image = 'https://commons.wikimedia.org/wiki/Special:FilePath/' + encodeURIComponent(p18) + '?width=480';
+      }
+      if (title) {
+        const sum = await webFetch('https://en.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(title.replace(/ /g, '_')));
+        out.wikipedia = {
+          title: sum.title,
+          extract: sum.extract,
+          url: sum.content_urls?.desktop?.page,
+        };
+        if (!out.image && sum.thumbnail?.source) out.image = sum.thumbnail.source;
+      }
+    } catch { /* enrichment is best-effort — ship what we have */ }
+  }
+  sendJson(res, 200, out);
+}
+
 const routes = {
   'GET /api/search': apiSearch,
   'GET /api/artist': apiArtist,
+  'GET /api/enrich': apiEnrich,
 };
 
 // --- Server ------------------------------------------------------------------

@@ -130,8 +130,6 @@
         'font-size': (n) => (n.hasClass('expanded') ? 14 : 11),
         'font-family': 'Cal Sans, system-ui, sans-serif',
         color: p.label,
-        'text-outline-color': p.outline,
-        'text-outline-width': 2,
         'text-valign': 'bottom',
         'text-margin-y': 7,
         'text-wrap': 'wrap',
@@ -159,8 +157,6 @@
         'font-size': 8.5,
         'font-family': 'system-ui, sans-serif',
         color: p.label,
-        'text-outline-color': p.outline,
-        'text-outline-width': 1.5,
         'text-rotation': 'autorotate',
         'text-opacity': 0,
         'overlay-opacity': 0,
@@ -241,16 +237,19 @@
       const r0 = (nodeSize(n) * zoom) / 2;
       const R = Math.min(340, Math.max(34, r0 * (n.hasClass('expanded') ? 8 : 6)));
       if (pos.x < -R || pos.y < -R || pos.x > w + R || pos.y > h + R) return;
-      // 50% bright at the very centre, easing out to nothing.
-      let a = 0.5;
-      if (n.selected()) a = 0.85;
+      // 35% bright at the very centre, easing out through a smooth
+      // exponential-ish ramp (enough stops that no banding shows).
+      let a = 0.35;
+      if (n.selected()) a = 0.6;
       if (n.hasClass('t-dim')) a *= 0.08;
       const [cr, cg, cb] = hexToRgb(glowColor(n));
       const g = glowCtx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, R);
       g.addColorStop(0, `rgba(${cr},${cg},${cb},${a})`);
-      g.addColorStop(0.14, `rgba(${cr},${cg},${cb},${a * 0.55})`);
-      g.addColorStop(0.38, `rgba(${cr},${cg},${cb},${a * 0.22})`);
-      g.addColorStop(0.68, `rgba(${cr},${cg},${cb},${a * 0.07})`);
+      g.addColorStop(0.1, `rgba(${cr},${cg},${cb},${a * 0.72})`);
+      g.addColorStop(0.22, `rgba(${cr},${cg},${cb},${a * 0.46})`);
+      g.addColorStop(0.36, `rgba(${cr},${cg},${cb},${a * 0.27})`);
+      g.addColorStop(0.52, `rgba(${cr},${cg},${cb},${a * 0.14})`);
+      g.addColorStop(0.72, `rgba(${cr},${cg},${cb},${a * 0.055})`);
       g.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
       glowCtx.fillStyle = g;
       glowCtx.fillRect(pos.x - R, pos.y - R, R * 2, R * 2);
@@ -692,6 +691,7 @@
     }
     actions.push(`<button class="p-expand p-danger" data-remove="${n.id()}" title="Take this node off the canvas">Remove</button>`);
     html += `<div class="p-actions">${actions.join('')}</div>`;
+    html += `<div class="p-enrich" data-enrich-for="${n.id()}"><p class="pe-hint">Looking up Wikipedia &amp; Cover Art Archive…</p></div>`;
 
     if (full) {
       const rels = (full.relations || []).filter((r) => r.artist);
@@ -707,6 +707,43 @@
       html += `<p class="pe-hint">Not fetched yet — expand to load dates, genres and connections.</p>`;
     }
     el.panel.innerHTML = html;
+    fillEnrich(n.id());
+  }
+
+  // ---------- Panel enrichment (Wikipedia / Wikidata / Cover Art Archive) ----------
+  const enrichCache = new Map();
+
+  function loadEnrich(id) {
+    if (!enrichCache.has(id)) {
+      enrichCache.set(id, api('/api/enrich?id=' + id).catch(() => null));
+    }
+    return enrichCache.get(id);
+  }
+
+  function fillEnrich(id) {
+    loadEnrich(id).then((enr) => {
+      const holder = el.panel.querySelector(`[data-enrich-for="${id}"]`);
+      if (!holder) return; // the panel has moved on to something else
+      holder.innerHTML = enrichHtml(enr);
+    });
+  }
+
+  function enrichHtml(enr) {
+    if (!enr || (!enr.wikipedia && !enr.image && !(enr.releaseGroups || []).length)) return '';
+    let h = '';
+    if (enr.image) {
+      h += `<img class="p-photo" src="${esc(enr.image)}" alt="" loading="lazy" onerror="this.remove()">`;
+    }
+    if (enr.wikipedia && enr.wikipedia.extract) {
+      h += `<p class="p-bio">${esc(enr.wikipedia.extract)}${enr.wikipedia.url ? ` <a href="${esc(enr.wikipedia.url)}" target="_blank" rel="noopener">Wikipedia →</a>` : ''}</p>`;
+    }
+    if (enr.releaseGroups && enr.releaseGroups.length) {
+      h += `<div class="p-section"><h3>Albums</h3><div class="p-albums">${enr.releaseGroups.map((rg) =>
+        `<a class="p-album" href="https://musicbrainz.org/release-group/${rg.id}" target="_blank" rel="noopener" title="${esc(rg.title)}${rg.year ? ` (${rg.year})` : ''}">` +
+        `<img src="https://coverartarchive.org/release-group/${rg.id}/front-250" alt="" loading="lazy" onerror="this.closest('.p-album').remove()">` +
+        `<span>${esc(rg.year || '')}</span></a>`).join('')}</div></div>`;
+    }
+    return h;
   }
 
   function renderPanelEdge(ed) {
