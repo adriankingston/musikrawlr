@@ -134,11 +134,11 @@
         'text-margin-y': 7,
         'text-wrap': 'wrap',
         'text-max-width': 130,
-        'text-opacity': 0,
+        'text-opacity': 0.72,
         'border-width': 0,
         'overlay-opacity': 0,
       } },
-      // Labels only where they earn their place: hubs, bridges, hover, selection.
+      // Everything is named; the important nodes just read louder.
       { selector: 'node.expanded, node.notable, node.hover, node.seed, node:selected', style: {
         'text-opacity': 1,
       } },
