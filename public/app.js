@@ -691,7 +691,7 @@
     }
     actions.push(`<button class="p-expand p-danger" data-remove="${n.id()}" title="Take this node off the canvas">Remove</button>`);
     html += `<div class="p-actions">${actions.join('')}</div>`;
-    html += `<div class="p-enrich" data-enrich-for="${n.id()}"><p class="pe-hint">Looking up Wikipedia &amp; Cover Art Archive…</p></div>`;
+    html += `<div class="p-enrich" data-enrich-for="${n.id()}"><p class="pe-hint">Looking up Wikipedia, Discogs &amp; Cover Art Archive…</p></div>`;
 
     if (full) {
       const rels = (full.relations || []).filter((r) => r.artist);
@@ -729,13 +729,13 @@
   }
 
   function enrichHtml(enr) {
-    if (!enr || (!enr.wikipedia && !enr.image && !(enr.releaseGroups || []).length)) return '';
+    if (!enr || (!enr.bio && !enr.image && !(enr.releaseGroups || []).length)) return '';
     let h = '';
     if (enr.image) {
       h += `<img class="p-photo" src="${esc(enr.image)}" alt="" loading="lazy" onerror="this.remove()">`;
     }
-    if (enr.wikipedia && enr.wikipedia.extract) {
-      h += `<p class="p-bio">${esc(enr.wikipedia.extract)}${enr.wikipedia.url ? ` <a href="${esc(enr.wikipedia.url)}" target="_blank" rel="noopener">Wikipedia →</a>` : ''}</p>`;
+    if (enr.bio && enr.bio.text) {
+      h += `<p class="p-bio">${esc(enr.bio.text)}${enr.bio.url ? ` <a href="${esc(enr.bio.url)}" target="_blank" rel="noopener">${esc(enr.bio.source)} →</a>` : ''}</p>`;
     }
     if (enr.releaseGroups && enr.releaseGroups.length) {
       h += `<div class="p-section"><h3>Albums</h3><div class="p-albums">${enr.releaseGroups.map((rg) =>

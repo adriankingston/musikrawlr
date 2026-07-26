@@ -43,14 +43,14 @@ let lastFetchAt = 0;
 const cachePathFor = (url) =>
   path.join(CACHE_DIR, crypto.createHash('sha1').update(url).digest('hex') + '.json');
 
-// Cached fetch for non-MusicBrainz hosts (Wikidata, Wikipedia): disk cache +
-// in-flight dedup + identifying UA, but no rate-limit queue.
-function webFetch(url) {
+// Cached fetch for non-MusicBrainz hosts (Wikidata, Wikipedia, Discogs):
+// disk cache + in-flight dedup + identifying UA, but no rate-limit queue.
+function webFetch(url, headers = {}) {
   const file = cachePathFor(url);
   try { return Promise.resolve(JSON.parse(fs.readFileSync(file, 'utf8'))); } catch { /* not cached */ }
   if (inflight.has(url)) return inflight.get(url);
   const p = (async () => {
-    const res = await fetch(url, { headers: { 'User-Agent': UA } });
+    const res = await fetch(url, { headers: { 'User-Agent': UA, ...headers } });
     if (!res.ok) throw new Error(`Upstream ${res.status}`);
     const data = await res.json();
     fs.writeFile(file, JSON.stringify(data), () => {});
@@ -59,6 +59,24 @@ function webFetch(url) {
   inflight.set(url, p);
   p.catch(() => {}).then(() => inflight.delete(url));
   return p;
+}
+
+// Discogs profile text uses its own markup ([a=Artist], [l=Label], [b]…);
+// strip it down to plain prose and keep it to a paragraph.
+function cleanDiscogsProfile(s) {
+  let t = String(s || '')
+    .replace(/\[(?:a|l|m|r)=([^\]]+)\]/g, '$1')
+    .replace(/\[(?:a|l|m|r)\d+\]/g, '')
+    .replace(/\[url=[^\]]*\]([^[]*)\[\/url\]/g, '$1')
+    .replace(/\[\/?[bius]\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (t.length > 620) {
+    const cut = t.slice(0, 620);
+    const stop = cut.lastIndexOf('. ');
+    t = stop > 200 ? cut.slice(0, stop + 1) : cut + '…';
+  }
+  return t;
 }
 
 function mbFetch(pathAndQuery) {
@@ -140,7 +158,7 @@ async function apiEnrich(req, res, url) {
     return sendJson(res, 400, { error: 'Invalid MBID' });
   }
   const artist = await mbFetch(`artist/${id}?inc=url-rels+release-groups`);
-  const out = { wikipedia: null, image: null, releaseGroups: [] };
+  const out = { bio: null, image: null, releaseGroups: [] };
 
   out.releaseGroups = (artist['release-groups'] || [])
     .filter((rg) => rg['primary-type'] === 'Album' && !(rg['secondary-types'] || []).length)
@@ -161,14 +179,36 @@ async function apiEnrich(req, res, url) {
       }
       if (title) {
         const sum = await webFetch('https://en.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(title.replace(/ /g, '_')));
-        out.wikipedia = {
-          title: sum.title,
-          extract: sum.extract,
-          url: sum.content_urls?.desktop?.page,
-        };
+        if (sum.extract) {
+          out.bio = { text: sum.extract, source: 'Wikipedia', url: sum.content_urls?.desktop?.page };
+        }
         if (!out.image && sum.thumbnail?.source) out.image = sum.thumbnail.source;
       }
     } catch { /* enrichment is best-effort — ship what we have */ }
+  }
+
+  // Discogs fills the Wikipedia gaps: MusicBrainz stores the exact Discogs
+  // artist id, and /artists/<id> works keyless (an optional DISCOGS_TOKEN in
+  // .env raises the rate limit and unlocks artist photos).
+  if (!out.bio || !out.image) {
+    const dg = (artist.relations || []).find((r) => r.type === 'discogs' && r.url);
+    const dgId = dg ? (dg.url.resource.match(/\/artist\/(\d+)/) || [])[1] : null;
+    if (dgId) {
+      try {
+        const headers = process.env.DISCOGS_TOKEN
+          ? { Authorization: `Discogs token=${process.env.DISCOGS_TOKEN}` }
+          : {};
+        const dgData = await webFetch(`https://api.discogs.com/artists/${dgId}`, headers);
+        if (!out.bio && dgData.profile) {
+          const text = cleanDiscogsProfile(dgData.profile);
+          if (text) out.bio = { text, source: 'Discogs', url: `https://www.discogs.com/artist/${dgId}` };
+        }
+        if (!out.image && Array.isArray(dgData.images) && dgData.images.length) {
+          const img = dgData.images.find((i) => i.type === 'primary') || dgData.images[0];
+          if (img && img.uri) out.image = img.uri;
+        }
+      } catch { /* best-effort */ }
+    }
   }
   sendJson(res, 200, out);
 }
