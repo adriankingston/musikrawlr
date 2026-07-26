@@ -54,9 +54,18 @@
     leaf: '#aac0ca', personHub: '#ffd166',
     label: '#e5edf0', outline: '#111d22',
     member: '#7e97a2', family: '#ff8fa3', collab: '#2ee6c8', other: '#445b64',
-    sel: '#ffffff', loading: '#2ee6c8', core: '#ffffff',
+    loading: '#2ee6c8',
   };
   const pal = () => PAL;
+
+  // Short display names for the wordier MusicBrainz relationship types.
+  const TYPE_SHORT = {
+    'member of band': 'member',
+    'supporting musician': 'supporting',
+    'instrumental supporting musician': 'supporting (instr.)',
+    'vocal supporting musician': 'supporting (vocals)',
+    'is person': 'same person',
+  };
 
   function hueOf(n) {
     const i = n.data('hueIdx');
@@ -135,18 +144,8 @@
       { selector: 'node.expanded, node.notable, node.hover, node.seed, node:selected', style: {
         'text-opacity': 1,
       } },
-      { selector: 'node.expanded', style: {
-        'border-width': 1.5,
-        'border-color': p.core,
-        'border-opacity': 0.9,
-      } },
       { selector: 'node.loading', style: {
         'border-width': 3, 'border-style': 'dashed', 'border-color': p.loading, 'border-opacity': 1,
-      } },
-      { selector: 'node:selected', style: {
-        'border-width': 2.5,
-        'border-color': p.sel,
-        'border-opacity': 1,
       } },
       { selector: 'edge', style: {
         'curve-style': 'unbundled-bezier',
@@ -156,7 +155,7 @@
         'line-color': p.other,
         'line-opacity': 0.45,
         'line-style': 'dashed',
-        label: 'data(years)',
+        label: 'data(tlabel)',
         'font-size': 8.5,
         'font-family': 'system-ui, sans-serif',
         color: p.label,
@@ -175,6 +174,9 @@
       { selector: 'edge[cls="collab"]', style: {
         width: 1.4, 'line-style': 'dashed', 'line-color': p.collab, 'line-opacity': 0.55,
       } },
+      // Non-membership relationships are rare and ambiguous — name them
+      // permanently (member edges reveal theirs on hover/selection).
+      { selector: 'edge[cls != "member"]', style: { 'text-opacity': 0.85 } },
       // Highlighted: edges of the hovered/selected node — labels appear here.
       { selector: 'edge.hl, edge:selected', style: {
         'line-opacity': 1, width: 2.4, 'text-opacity': 1,
@@ -239,15 +241,16 @@
       const r0 = (nodeSize(n) * zoom) / 2;
       const R = Math.min(340, Math.max(34, r0 * (n.hasClass('expanded') ? 8 : 6)));
       if (pos.x < -R || pos.y < -R || pos.x > w + R || pos.y > h + R) return;
-      let a = n.hasClass('expanded') ? 0.44 : 0.26;
-      if (n.selected()) a *= 1.5;
+      // 50% bright at the very centre, easing out to nothing.
+      let a = 0.5;
+      if (n.selected()) a = 0.85;
       if (n.hasClass('t-dim')) a *= 0.08;
       const [cr, cg, cb] = hexToRgb(glowColor(n));
       const g = glowCtx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, R);
-      g.addColorStop(0, `rgba(${cr},${cg},${cb},${a * 0.5})`);
-      g.addColorStop(0.15, `rgba(${cr},${cg},${cb},${a * 0.3})`);
-      g.addColorStop(0.4, `rgba(${cr},${cg},${cb},${a * 0.12})`);
-      g.addColorStop(0.72, `rgba(${cr},${cg},${cb},${a * 0.035})`);
+      g.addColorStop(0, `rgba(${cr},${cg},${cb},${a})`);
+      g.addColorStop(0.14, `rgba(${cr},${cg},${cb},${a * 0.55})`);
+      g.addColorStop(0.38, `rgba(${cr},${cg},${cb},${a * 0.22})`);
+      g.addColorStop(0.68, `rgba(${cr},${cg},${cb},${a * 0.07})`);
       g.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
       glowCtx.fillStyle = g;
       glowCtx.fillRect(pos.x - R, pos.y - R, R * 2, R * 2);
@@ -337,10 +340,13 @@
       }
       const key = `${src}|${tgt}|${r.type}|${r.begin || ''}`;
       if (cy.getElementById(key).nonempty()) continue;
+      const yearsTxt = fmtYears(r);
+      const short = TYPE_SHORT[r.type] || r.type;
       cy.add({ group: 'edges', data: {
         id: key, source: src, target: tgt,
         cls: REL_CLASS[r.type] || 'other', type: r.type,
-        years: fmtYears(r), attrs: (r.attributes || []).join(', '),
+        years: yearsTxt, attrs: (r.attributes || []).join(', '),
+        tlabel: yearsTxt ? `${short} · ${yearsTxt}` : short,
         by: yr(r.begin), ey: yr(r.end), ended: !!r.ended,
       } });
       added++;
