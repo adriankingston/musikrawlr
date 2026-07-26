@@ -98,6 +98,25 @@
     return hueOf(n) || (n.hasClass('expanded') ? p.personHub : p.leaf);
   }
 
+  function mixHex(a, b, t) {
+    const pa = parseInt(a.slice(1), 16);
+    const pb = parseInt(b.slice(1), 16);
+    const ch = (sa, sb) => Math.round(sa + (sb - sa) * t);
+    const r = ch((pa >> 16) & 255, (pb >> 16) & 255);
+    const g = ch((pa >> 8) & 255, (pb >> 8) & 255);
+    const bl = ch(pa & 255, pb & 255);
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1);
+  }
+
+  // Every node gets a diffused bloom; hubs blend their hue toward white so
+  // the glow reads as light, not paint. On paper (light theme) white is
+  // invisible, so hubs glow in their hue and leaves in soft slate.
+  function glowColor(n) {
+    const hue = hueOf(n) || (n.hasClass('expanded') ? pal().personHub : null);
+    if (theme() === 'dark') return hue ? mixHex(hue, '#ffffff', 0.6) : '#ffffff';
+    return hue || '#8d94ad';
+  }
+
   function nodeSize(n) {
     const deg = n.data('deg') || 0;
     return n.hasClass('expanded')
@@ -124,6 +143,7 @@
 
   function cyStyle() {
     const p = pal();
+    const dark = theme() === 'dark';
     return [
       { selector: 'node', style: {
         width: nodeSize,
@@ -142,19 +162,24 @@
         'text-opacity': 0,
         'border-width': 0,
         'overlay-opacity': 0,
+        // The all-points diffused bloom.
+        'underlay-color': glowColor,
+        'underlay-opacity': dark ? 0.16 : 0.1,
+        'underlay-padding': 5,
+        'underlay-shape': 'ellipse',
       } },
       // Labels only where they earn their place: hubs, bridges, hover, selection.
       { selector: 'node.expanded, node.notable, node.hover, node.seed, node:selected', style: {
         'text-opacity': 1,
       } },
       { selector: 'node.expanded', style: {
-        'underlay-color': nodeColor,
-        'underlay-opacity': theme() === 'dark' ? 0.18 : 0.14,
+        'underlay-color': glowColor,
+        'underlay-opacity': dark ? 0.26 : 0.15,
         'underlay-padding': (n) => 7 + (n.data('deg') || 0) * 0.7,
         'underlay-shape': 'ellipse',
         'border-width': 1.5,
         'border-color': p.core,
-        'border-opacity': theme() === 'dark' ? 0.9 : 0.75,
+        'border-opacity': dark ? 0.9 : 0.75,
       } },
       { selector: 'node.loading', style: {
         'border-width': 3, 'border-style': 'dashed', 'border-color': p.loading, 'border-opacity': 1,
@@ -163,8 +188,8 @@
         'border-width': 2.5,
         'border-color': p.sel,
         'border-opacity': 1,
-        'underlay-color': nodeColor,
-        'underlay-opacity': theme() === 'dark' ? 0.32 : 0.2,
+        'underlay-color': glowColor,
+        'underlay-opacity': dark ? 0.34 : 0.2,
         'underlay-padding': (n) => 9 + (n.data('deg') || 0) * 0.7,
         'underlay-shape': 'ellipse',
       } },
@@ -310,6 +335,13 @@
       } });
       added++;
     }
+    graphChanged();
+    return added;
+  }
+
+  // Shared refresh after any structural change: degree-driven sizing,
+  // bridge labels, overlays/timeline, and a fresh layout pass.
+  function graphChanged() {
     cy.nodes().forEach((n) => {
       n.data('deg', Math.min(n.degree(false), 12));
       // Musicians linked into 3+ things are the bridges — label them.
@@ -317,7 +349,48 @@
     });
     updateOverlays();
     runLayout();
-    return added;
+  }
+
+  // Sweep satellites that no longer connect to anything worth keeping.
+  function removeOrphans() {
+    cy.nodes()
+      .filter((m) => m.degree(true) === 0 && !m.hasClass('expanded') && !m.hasClass('seed'))
+      .forEach((m) => cy.remove(m));
+  }
+
+  // Collapse: fold an expanded node back to its bridges — its edges to other
+  // hubs survive (they're part of those hubs' stories), everything that only
+  // existed because of this expansion is swept away. Re-expanding is instant
+  // (server cache) and reuses the same hue.
+  function collapseNode(id) {
+    const n = cy.getElementById(id);
+    if (n.empty() || !expanded.has(id)) return;
+    cy.batch(() => {
+      n.connectedEdges().forEach((ed) => {
+        const other = ed.source().id() === id ? ed.target() : ed.source();
+        if (!other.hasClass('expanded')) cy.remove(ed);
+      });
+      n.removeClass('expanded');
+      expanded.delete(id);
+      removeOrphans();
+    });
+    graphChanged();
+    if (n.selected()) renderPanelNode(n);
+  }
+
+  // Remove: take the node (and anything orphaned by its departure) off the
+  // canvas entirely.
+  function removeNode(id) {
+    const n = cy.getElementById(id);
+    if (n.empty()) return;
+    const wasSelected = n.selected();
+    cy.batch(() => {
+      cy.remove(n);
+      expanded.delete(id);
+      removeOrphans();
+    });
+    graphChanged();
+    if (wasSelected) panelEmpty();
   }
 
   let layoutObj = null;
@@ -491,7 +564,11 @@
     });
     const show = dated && cy.nodes().length > 0;
     el.timebar.hidden = !show;
-    if (!show) return;
+    if (!show) {
+      // No dated material left to scrub — don't strand a stale year filter.
+      if (time.active) exitTime();
+      return;
+    }
     time.min = min;
     time.max = Math.max(max, min + 1);
     el.tbRange.min = time.min;
@@ -591,9 +668,14 @@
       html += `<div class="p-chips">${gs.map((g) => `<span class="p-chip p-genre">${esc(g.name)}</span>`).join('')}</div>`;
     }
 
+    const actions = [];
     if (!expanded.has(n.id())) {
-      html += `<button class="p-expand" data-expand="${n.id()}"${loading.has(n.id()) ? ' disabled' : ''}>${loading.has(n.id()) ? 'Expanding…' : 'Expand connections'}</button>`;
+      actions.push(`<button class="p-expand" data-expand="${n.id()}"${loading.has(n.id()) ? ' disabled' : ''}>${loading.has(n.id()) ? 'Expanding…' : 'Expand connections'}</button>`);
+    } else {
+      actions.push(`<button class="p-expand" data-collapse="${n.id()}">Collapse</button>`);
     }
+    actions.push(`<button class="p-expand p-danger" data-remove="${n.id()}" title="Take this node off the canvas">Remove</button>`);
+    html += `<div class="p-actions">${actions.join('')}</div>`;
 
     if (full) {
       const rels = (full.relations || []).filter((r) => r.artist);
@@ -629,6 +711,10 @@
   el.panel.addEventListener('click', (e) => {
     const ex = e.target.closest('[data-expand]');
     if (ex) { expand(ex.dataset.expand); renderPanelNode(cy.getElementById(ex.dataset.expand)); return; }
+    const co = e.target.closest('[data-collapse]');
+    if (co) { collapseNode(co.dataset.collapse); return; }
+    const rm = e.target.closest('[data-remove]');
+    if (rm) { removeNode(rm.dataset.remove); return; }
     const go = e.target.closest('[data-goto]');
     if (go) goTo(go.dataset.goto, go.dataset.name);
   });
@@ -650,6 +736,24 @@
   cy.on('unselect', 'node', (e) => e.target.connectedEdges().removeClass('hl'));
   cy.on('select', 'edge', (e) => renderPanelEdge(e.target));
   cy.on('unselect', () => setTimeout(() => { if (cy.$(':selected').empty()) panelEmpty(); }, 0));
+
+  // Right-click closes: collapse an expanded node, remove anything else.
+  cy.on('cxttap', 'node', (e) => {
+    const id = e.target.id();
+    if (expanded.has(id)) collapseNode(id);
+    else removeNode(id);
+    hideTip();
+  });
+  $('#cy').addEventListener('contextmenu', (e) => e.preventDefault());
+
+  // Delete/Backspace removes the selected node (unless typing in a field).
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+    const t = document.activeElement;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+    const sel = cy.$('node:selected');
+    if (sel.length) { e.preventDefault(); removeNode(sel[0].id()); }
+  });
 
   // Manual double-tap detection (works for touch too).
   let lastTap = { id: null, t: 0 };
@@ -679,7 +783,9 @@
     n.addClass('hover');
     n.connectedEdges().addClass('hl');
     const sub = n.data('disambiguation') || (n.data('kind') === 'person' ? 'Musician' : n.data('kind') === 'group' ? 'Band' : '');
-    const hint = expanded.has(n.id()) ? '' : '<div class="t-sub">Double-click to expand</div>';
+    const hint = expanded.has(n.id())
+      ? '<div class="t-sub">Right-click to collapse</div>'
+      : '<div class="t-sub">Double-click to expand · right-click to remove</div>';
     showTip(`<strong>${esc(n.data('name'))}</strong>${sub ? `<div class="t-sub">${esc(sub)}</div>` : ''}${hint}`, e);
   });
   cy.on('mouseout', 'node', (e) => {

@@ -260,6 +260,7 @@ main { flex: 1; display: flex; min-height: 0; }
 .line-family { border-top-style: dotted; border-top-color: #ff8fa3; }
 .line-collab { border-top-style: dashed; border-top-color: var(--accent); }
 .lg-hint { opacity: .8; }
+.lg-credit a { color: inherit; }
 
 /* ---------- Timeline bar ---------- */
 #timebar {
@@ -374,8 +375,10 @@ main { flex: 1; display: flex; min-height: 0; }
 .p-chip.kind-person { background: var(--person); color: #241a00; }
 .p-genre { border: 1px solid var(--line); background: none; color: var(--muted); }
 
+.p-actions { display: flex; gap: 8px; }
 .p-expand {
   display: block;
+  flex: 1;
   width: 100%;
   margin: 10px 0;
   padding: 9px;
@@ -389,6 +392,15 @@ main { flex: 1; display: flex; min-height: 0; }
 }
 .p-expand:hover { filter: brightness(1.15); }
 .p-expand[disabled] { opacity: .55; cursor: default; }
+.p-danger {
+  flex: none;
+  width: auto;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--warn);
+  padding: 9px 14px;
+}
+.p-danger:hover { border-color: var(--warn); filter: none; }
 
 .p-section { margin: 14px 0 4px; }
 .p-section h3 {
