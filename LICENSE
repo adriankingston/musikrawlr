@@ -1,0 +1,64 @@
+MIT License
+
+Copyright (c) 2026
+
+Developed by Adrian Kington, using Claude Code, so built on the work of many
+people, over decades. Thanks to all of them.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+The MIT licence above covers the application code in this repository only. The
+bundled library and fonts, and the data the app retrieves at runtime, are the
+property of their respective owners under the terms below.
+
+
+================================================================================
+BUNDLED THIRD-PARTY SOFTWARE
+================================================================================
+
+Cytoscape.js  (public/vendor/cytoscape.min.js)
+  The relationship graph is rendered with Cytoscape.js.
+  Copyright (c) 2016-2024, The Cytoscape Consortium.
+  Licensed under the MIT License. The full copyright and licence notice is
+  retained in the header of the bundled file.
+  https://js.cytoscape.org/
+
+Cal Sans  (public/fonts/calsans-latin.woff2, public/fonts/calsans-latinext.woff2)
+  Headings are set in the Cal Sans display typeface (latin + latin-extended
+  subsets, self-hosted).
+  Copyright the Cal.com, Inc. team and contributors.
+  Licensed under the SIL Open Font License, Version 1.1.
+  https://fonts.google.com/specimen/Cal+Sans
+
+
+================================================================================
+DATA RETRIEVED AT RUNTIME
+================================================================================
+
+MusicBrainz
+  Artist records and relationships are fetched from the MusicBrainz web
+  service. MusicBrainz core data is released into the public domain under
+  CC0 1.0 Universal; supplementary data (such as genre tags) is licensed
+  CC BY-NC-SA 3.0. MusicBrainz is operated by the MetaBrainz Foundation.
+  https://musicbrainz.org/doc/About/Data_License
+
+================================================================================
+
+This project is an independent, non-commercial tool and is not affiliated with
+or endorsed by the MetaBrainz Foundation or the Cytoscape Consortium.

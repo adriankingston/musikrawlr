@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Band graph — who played with whom</title>
+<script>
+  // Set the theme before first paint (no flash of the wrong theme).
+  (function () {
+    try {
+      var t = localStorage.getItem('bandgraph.theme');
+      if (!t) t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      document.documentElement.dataset.theme = t;
+    } catch (e) { document.documentElement.dataset.theme = 'dark'; }
+  })();
+</script>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2228%22 cy=%2270%22 r=%2214%22 fill=%22%23118ab2%22/><circle cx=%2272%22 cy=%2264%22 r=%2211%22 fill=%22%23f78c6b%22/><circle cx=%2256%22 cy=%2226%22 r=%229%22 fill=%22%230cb0a9%22/><path d=%22M28 70 56 26 72 64z%22 fill=%22none%22 stroke=%22%23888%22 stroke-width=%224%22/></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 100 100" aria-hidden="true">
+      <path d="M28 70 56 26 72 64 28 70" fill="none" stroke="currentColor" stroke-width="5" opacity=".35"/>
+      <circle cx="28" cy="70" r="14" fill="var(--group)"/>
+      <circle cx="72" cy="64" r="11" fill="var(--person)"/>
+      <circle cx="56" cy="26" r="9" fill="var(--accent)"/>
+    </svg>
+    <span class="brand-title">Band graph</span>
+  </div>
+
+  <div class="search-wrap">
+    <input id="q" type="search" placeholder="Search a band or musician…" autocomplete="off" spellcheck="false" aria-label="Search MusicBrainz artists">
+    <div id="results" hidden></div>
+  </div>
+
+  <div class="top-actions">
+    <button id="fit" class="btn" title="Fit the whole graph in view">Fit</button>
+    <button id="clear" class="btn" title="Remove everything from the canvas">Clear</button>
+    <div id="theme-switch" role="radiogroup" aria-label="Colour theme">
+      <button type="button" data-theme-opt="light" role="radio" aria-checked="false">Light</button>
+      <button type="button" data-theme-opt="dark" role="radio" aria-checked="false">Dark</button>
+      <span class="knob" aria-hidden="true"></span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="stage">
+    <div id="cy" role="application" aria-label="Band and musician relationship graph"></div>
+
+    <div id="empty" class="empty">
+      <h2>Trace the family trees of music</h2>
+      <p>Search for any band or musician, then <strong>double-click</strong> nodes to keep
+        expanding — members link out to their other bands, and the web of a whole
+        scene appears.</p>
+      <p class="starters">
+        <button class="chip" data-seed="Split Enz">Split Enz</button>
+        <button class="chip" data-seed="The Clean">The Clean</button>
+        <button class="chip" data-seed="Fleetwood Mac">Fleetwood Mac</button>
+        <button class="chip" data-seed="Nirvana">Nirvana</button>
+      </p>
+    </div>
+
+    <div id="legend" hidden>
+      <span class="lg-item"><i class="dot dot-group"></i>Band</span>
+      <span class="lg-item"><i class="dot dot-person"></i>Musician</span>
+      <span class="lg-item"><i class="line line-member"></i>Member</span>
+      <span class="lg-item"><i class="line line-family"></i>Family</span>
+      <span class="lg-item"><i class="line line-collab"></i>Collaboration</span>
+      <span class="lg-item"><i class="dot dot-ring"></i>Expanded</span>
+      <span class="lg-hint">Double-click a node to expand it</span>
+    </div>
+
+    <div id="status" hidden></div>
+    <div id="tip" hidden></div>
+    <div id="credit">Data: <a href="https://musicbrainz.org" target="_blank" rel="noopener">MusicBrainz</a></div>
+  </div>
+
+  <aside id="panel">
+    <div class="panel-empty">
+      <p>Nothing selected.</p>
+      <p class="pe-hint">Tap a node to see its details here — dates, genres, memberships and links.</p>
+    </div>
+  </aside>
+</main>
+
+<script src="vendor/cytoscape.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
