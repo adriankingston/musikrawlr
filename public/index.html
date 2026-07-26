@@ -71,6 +71,17 @@
       <span class="lg-item"><i class="line line-family"></i>Family</span>
       <span class="lg-item"><i class="line line-collab"></i>Collaboration</span>
       <span class="lg-hint">Double-click to expand · hover for names</span>
+      <span class="lg-item lg-credit">Data: <a href="https://musicbrainz.org" target="_blank" rel="noopener">MusicBrainz</a></span>
+    </div>
+
+    <div id="timebar" hidden>
+      <button id="tb-play" class="tb-btn" title="Play through the years">▶</button>
+      <span id="tb-year" class="tb-year">All time</span>
+      <div class="tb-rail">
+        <canvas id="tb-hist" height="26" aria-hidden="true"></canvas>
+        <input id="tb-range" type="range" min="1950" max="2026" step="1" value="2026" aria-label="Filter memberships by year">
+      </div>
+      <button id="tb-all" class="tb-btn tb-all" title="Stop filtering by year">All</button>
     </div>
 
     <div id="status" hidden></div>

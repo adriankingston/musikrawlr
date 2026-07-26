@@ -261,6 +261,57 @@ main { flex: 1; display: flex; min-height: 0; }
 .line-collab { border-top-style: dashed; border-top-color: var(--accent); }
 .lg-hint { opacity: .8; }
 
+/* ---------- Timeline bar ---------- */
+#timebar {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 16;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  width: min(560px, calc(100% - 24px));
+}
+.tb-btn {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.tb-btn:hover { border-color: var(--accent); color: var(--accent); }
+.tb-all { width: auto; padding: 0 11px; font-size: 12px; }
+.tb-year {
+  flex: none;
+  min-width: 62px;
+  text-align: center;
+  font-family: 'Cal Sans', system-ui, sans-serif;
+  font-size: 15px;
+}
+.tb-rail { flex: 1; min-width: 0; }
+#tb-hist { display: block; width: 100%; height: 26px; }
+#tb-range {
+  display: block;
+  width: 100%;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+/* Keep the legend clear of the timebar when the stage narrows. */
+@media (max-width: 980px) {
+  #legend { bottom: 76px; }
+}
+
 #status {
   position: absolute;
   top: 12px;

@@ -6,6 +6,8 @@
     q: $('#q'), results: $('#results'), panel: $('#panel'), empty: $('#empty'),
     legend: $('#legend'), status: $('#status'), tip: $('#tip'), stage: $('#stage'),
     fit: $('#fit'), clear: $('#clear'), themeSwitch: $('#theme-switch'),
+    credit: $('#credit'), timebar: $('#timebar'), tbPlay: $('#tb-play'),
+    tbYear: $('#tb-year'), tbRange: $('#tb-range'), tbHist: $('#tb-hist'), tbAll: $('#tb-all'),
   };
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -30,6 +32,7 @@
     try { localStorage.setItem(THEME_KEY, t); } catch { /* private mode */ }
     syncThemeSwitch();
     cy.style().fromJson(cyStyle()).update();
+    if (!el.timebar.hidden) drawHist();
   }
   function syncThemeSwitch() {
     el.themeSwitch.dataset.on = theme();
@@ -196,6 +199,15 @@
       { selector: 'edge.hl, edge:selected', style: {
         'line-opacity': 1, width: 2.4, 'text-opacity': 1,
       } },
+      // Time-scrub mode (last, so it wins): inactive elements recede,
+      // undated relationships ghost rather than pretend to a date.
+      { selector: 'node.t-dim', style: { opacity: 0.12 } },
+      { selector: 'edge.t-dim', style: { 'line-opacity': 0.05, 'text-opacity': 0 } },
+      { selector: 'edge.t-ghost', style: { 'line-opacity': 0.13, 'text-opacity': 0 } },
+      // :selected outranks plain classes in cytoscape's specificity, so pin
+      // the time-dim down for selected elements too (kept faintly visible).
+      { selector: 'node.t-dim:selected', style: { opacity: 0.25 } },
+      { selector: 'edge.t-dim:selected', style: { 'line-opacity': 0.15 } },
     ];
   }
 
@@ -210,13 +222,18 @@
 
   // The pane/container can be 0×0 at init or change size later — keep
   // cytoscape's cached viewport dimensions honest or fit() breaks silently.
-  new ResizeObserver(() => cy.resize()).observe($('#cy'));
+  new ResizeObserver(() => {
+    cy.resize();
+    if (!el.timebar.hidden) drawHist();
+  }).observe($('#cy'));
 
   // ---------- Graph building ----------
   const expanded = new Set();
   const loading = new Set();
 
   const kindOf = (t) => (t ? (t === 'Person' ? 'person' : 'group') : 'unknown');
+
+  const yr = (s) => { const m = /^(\d{4})/.exec(s || ''); return m ? +m[1] : null; };
 
   function fmtYears(r) {
     const b = (r.begin || '').slice(0, 4);
@@ -248,6 +265,9 @@
   function addArtist(a) {
     const node = ensureNode(a);
     node.data('full', a);
+    const ls = a['life-span'] || {};
+    node.data('lsBy', yr(ls.begin));
+    node.data('lsEy', yr(ls.end));
     if (a.type) node.data('kind', kindOf(a.type));
     if (a.disambiguation) node.data('disambiguation', a.disambiguation);
     node.addClass('expanded');
@@ -286,6 +306,7 @@
         id: key, source: src, target: tgt,
         cls: REL_CLASS[r.type] || 'other', type: r.type,
         years: fmtYears(r), attrs: (r.attributes || []).join(', '),
+        by: yr(r.begin), ey: yr(r.end), ended: !!r.ended,
       } });
       added++;
     }
@@ -366,7 +387,155 @@
     const has = cy.nodes().length > 0;
     el.empty.hidden = has;
     el.legend.hidden = !has;
+    el.credit.hidden = has; // the legend carries the credit once a graph exists
+    updateTimeRange();
   }
+
+  // ---------- Timeline (scrub the years) ----------
+  const NOW_YEAR = new Date().getFullYear();
+  const time = { active: false, playing: false, year: null, min: 1950, max: NOW_YEAR, timer: 0 };
+
+  // A membership with missing dates borrows them from the band's life-span:
+  // an undated founder shines for the band's whole run instead of ghosting,
+  // and an "ended, start unknown" stint can't predate the band's formation.
+  function edgeWindow(ed) {
+    const d = ed.data();
+    let by = d.by;
+    let ey = d.ey;
+    if (d.cls === 'member') {
+      const band = ed.target(); // member edges always point person → band
+      if (by == null) by = band.data('lsBy') ?? null;
+      if (ey == null) ey = band.data('lsEy') ?? null;
+    }
+    return { by, ey };
+  }
+
+  // true = active at year y · false = dated but inactive · null = undated
+  function onAt(w, y) {
+    if (w.by == null && w.ey == null) return null;
+    if (w.by != null && w.ey != null) return w.by <= y && y <= w.ey;
+    if (w.by != null) return w.by <= y;
+    return y <= w.ey;
+  }
+
+  function applyTime(y) {
+    y = Math.max(time.min, Math.min(time.max, y));
+    time.active = true;
+    time.year = y;
+    el.tbYear.textContent = y;
+    el.tbRange.value = y;
+    cy.batch(() => {
+      cy.edges().forEach((ed) => {
+        const on = onAt(edgeWindow(ed), y);
+        ed.toggleClass('t-ghost', on === null);
+        ed.toggleClass('t-dim', on === false);
+      });
+      cy.nodes().forEach((n) => {
+        let on = n.connectedEdges().some((ed) => !ed.hasClass('t-dim') && !ed.hasClass('t-ghost'));
+        if (!on && n.data('kind') === 'group') {
+          // A band hub stays alive through its own life-span even when its
+          // membership dates are missing.
+          const by = n.data('lsBy');
+          const ey = n.data('lsEy');
+          on = by != null && by <= y && (ey == null || y <= ey);
+        }
+        n.toggleClass('t-dim', !on);
+      });
+    });
+  }
+
+  function exitTime() {
+    pauseTime();
+    time.active = false;
+    time.year = null;
+    el.tbYear.textContent = 'All time';
+    el.tbRange.value = el.tbRange.max;
+    cy.batch(() => cy.elements().removeClass('t-dim t-ghost'));
+  }
+
+  function pauseTime() {
+    time.playing = false;
+    el.tbPlay.textContent = '▶';
+    clearInterval(time.timer);
+  }
+
+  function playTime() {
+    if (time.playing) return pauseTime();
+    if (!time.active || time.year >= time.max) applyTime(time.min);
+    time.playing = true;
+    el.tbPlay.textContent = '⏸';
+    time.timer = setInterval(() => {
+      if (time.year >= time.max) return pauseTime();
+      applyTime(time.year + 1);
+    }, 240);
+  }
+
+  function updateTimeRange() {
+    let min = Infinity;
+    let max = -Infinity;
+    let dated = false;
+    cy.edges().forEach((ed) => {
+      const w = edgeWindow(ed);
+      if (w.by != null || w.ey != null) {
+        dated = true;
+        min = Math.min(min, w.by ?? w.ey);
+        max = Math.max(max, w.ey ?? NOW_YEAR);
+      }
+    });
+    cy.nodes('[kind="group"]').forEach((n) => {
+      const by = n.data('lsBy');
+      if (by != null) {
+        min = Math.min(min, by);
+        max = Math.max(max, n.data('lsEy') ?? NOW_YEAR);
+      }
+    });
+    const show = dated && cy.nodes().length > 0;
+    el.timebar.hidden = !show;
+    if (!show) return;
+    time.min = min;
+    time.max = Math.max(max, min + 1);
+    el.tbRange.min = time.min;
+    el.tbRange.max = time.max;
+    if (time.active) applyTime(time.year);
+    else el.tbRange.value = time.max;
+    drawHist();
+  }
+
+  function drawHist() {
+    const c = el.tbHist;
+    const w = c.parentElement.clientWidth;
+    const h = 26;
+    const dpr = window.devicePixelRatio || 1;
+    if (!w) return;
+    c.width = Math.round(w * dpr);
+    c.height = Math.round(h * dpr);
+    const ctx = c.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const span = time.max - time.min + 1;
+    const windows = cy.edges('[cls="member"]').map((ed) => edgeWindow(ed));
+    const counts = [];
+    let peak = 1;
+    for (let i = 0; i < span; i++) {
+      let k = 0;
+      for (const w of windows) if (onAt(w, time.min + i)) k++;
+      counts.push(k);
+      if (k > peak) peak = k;
+    }
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+    ctx.globalAlpha = 0.38;
+    const bw = w / span;
+    counts.forEach((k, i) => {
+      if (!k) return;
+      const bh = Math.max(2, (k / peak) * (h - 3));
+      ctx.fillRect(i * bw + 0.5, h - bh, Math.max(1, bw - 1), bh);
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  el.tbPlay.addEventListener('click', playTime);
+  el.tbAll.addEventListener('click', exitTime);
+  el.tbRange.addEventListener('input', () => { pauseTime(); applyTime(+el.tbRange.value); });
 
   // ---------- Detail panel ----------
   const LINK_LABELS = {
@@ -629,6 +798,7 @@
   // ---------- Toolbar ----------
   el.fit.addEventListener('click', () => { cy.resize(); cy.fit(undefined, 70); });
   el.clear.addEventListener('click', () => {
+    exitTime();
     cy.elements().remove();
     expanded.clear();
     hueCounter = 0;
