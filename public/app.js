@@ -386,12 +386,16 @@
     // New neighbours spawn evenly on a circle around their anchor, so the
     // layout starts untangled and unfolds locally instead of from a pile.
     const newCount = rels.filter((r) => cy.getElementById(r.artist.id).empty()).length || 1;
+    // Size the ring to the crowd: a fixed radius piles 51 Fall members on top
+    // of each other and the layout never fully digs them apart. Each node
+    // needs ~95px of arc for its label, so grow the circle to suit.
+    const ring = Math.max(200, (newCount * 95) / (2 * Math.PI));
     let newIdx = 0;
     for (const r of rels) {
       if (cy.getElementById(r.artist.id).empty()) {
         const ang = (newIdx++ / newCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.2;
         ensureNode(r.artist, {
-          position: { x: pos.x + Math.cos(ang) * 180, y: pos.y + Math.sin(ang) * 180 },
+          position: { x: pos.x + Math.cos(ang) * ring, y: pos.y + Math.sin(ang) * ring },
         });
       } else {
         ensureNode(r.artist); // may upgrade an unknown node's kind
@@ -558,25 +562,36 @@
   }
 
   let layoutObj = null;
-  function runLayout() {
+
+  // `fresh: true` throws away the current positions and solves from scratch.
+  // Nudging an existing arrangement is right for one more expansion, but once
+  // several hubs are open the old layout is a local minimum the simulation
+  // can't climb out of — clusters stay tangled however long it runs.
+  function runLayout(opts = {}) {
     if (layoutObj) { try { layoutObj.stop(); } catch { /* already done */ } }
     cy.resize();
+    const n = cy.nodes(':visible').length;
+    const dur = opts.fresh ? 700 : 500;
     layoutObj = cy.layout({
       name: 'cose',
       // Filtered-out elements shouldn't reserve space in the layout.
       eles: cy.elements(':visible'),
       animate: 'end',
-      animationDuration: 500,
+      animationDuration: dur,
       fit: true,
       padding: 60,
-      randomize: false,
+      randomize: !!opts.fresh,
       nodeDimensionsIncludeLabels: true,
-      idealEdgeLength: 130,
-      nodeRepulsion: 100000,
-      nodeOverlap: 30,
-      gravity: 0.4,
-      numIter: 2500,
-      componentSpacing: 140,
+      // Hubs shove much harder than leaves, so each band keeps its own
+      // territory instead of its satellites interleaving with the next one's.
+      nodeRepulsion: (node) => (node.hasClass('expanded') ? 1600000 : 150000),
+      // Hub-to-hub links stretch long; a member sits close to its band.
+      idealEdgeLength: (ed) =>
+        (ed.source().hasClass('expanded') && ed.target().hasClass('expanded') ? 380 : 130),
+      nodeOverlap: 60,
+      gravity: n > 60 ? 0.15 : 0.35,
+      numIter: n > 40 ? 4000 : 2500,
+      componentSpacing: 180,
     });
     layoutObj.run();
     // Re-fit after the position tween has finished — cose computes its own fit
@@ -585,7 +600,7 @@
     runLayout._refit = setTimeout(() => {
       cy.resize();
       cy.animate({ fit: { eles: cy.elements(':visible'), padding: 70 } }, { duration: 220 });
-    }, 640);
+    }, dur + 140);
   }
 
   async function expand(id) {
@@ -1169,7 +1184,18 @@
   });
 
   // ---------- Toolbar ----------
-  el.fit.addEventListener('click', () => { cy.resize(); cy.fit(undefined, 70); });
+  // Fit used to just zoom out on whatever tangle was there. Once more than one
+  // hub is open the arrangement has usually drifted from the single-hub one it
+  // grew out of, so tidy it properly first; with one hub, just frame it.
+  el.fit.addEventListener('click', () => {
+    cy.resize();
+    if (cy.nodes('.expanded').length > 1) {
+      setStatus('Re-arranging…', false, 1400);
+      runLayout({ fresh: true });
+    } else {
+      cy.animate({ fit: { eles: cy.elements(':visible'), padding: 70 } }, { duration: 220 });
+    }
+  });
   el.clear.addEventListener('click', () => {
     exitTime();
     cy.elements().remove();
