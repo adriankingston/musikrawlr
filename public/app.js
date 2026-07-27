@@ -7,6 +7,7 @@
     legend: $('#legend'), status: $('#status'), tip: $('#tip'), stage: $('#stage'),
     fit: $('#fit'), clear: $('#clear'), glow: $('#glow'),
     credit: $('#credit'), timebar: $('#timebar'), tbPlay: $('#tb-play'),
+    relfilter: $('#relfilter'), relList: $('#rel-list'), relState: $('#rel-state'),
     tbYear: $('#hud-year'), tbRange: $('#tb-range'), tbHist: $('#tb-hist'), tbAll: $('#tb-all'),
   };
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -185,6 +186,8 @@
       // the time-dim down for selected elements too (kept faintly visible).
       { selector: 'node.t-dim:selected', style: { opacity: 0.25 } },
       { selector: 'edge.t-dim:selected', style: { 'line-opacity': 0.15 } },
+      // Filtered out by relationship type — gone entirely, not just dimmed.
+      { selector: '.f-off', style: { display: 'none' } },
     ];
   }
 
@@ -232,6 +235,7 @@
     glowCtx.globalCompositeOperation = 'lighter';
     const zoom = cy.zoom();
     cy.nodes().forEach((n) => {
+      if (!n.visible()) return;
       const pos = n.renderedPosition();
       const r0 = (nodeSize(n) * zoom) / 2;
       const R = Math.min(340, Math.max(34, r0 * (n.hasClass('expanded') ? 8 : 6)));
@@ -354,16 +358,66 @@
   }
 
   // Shared refresh after any structural change: degree-driven sizing,
-  // bridge labels, overlays/timeline, and a fresh layout pass.
+  // bridge labels, filters, overlays/timeline, and a fresh layout pass.
   function graphChanged() {
     cy.nodes().forEach((n) => {
       n.data('deg', Math.min(n.degree(false), 12));
       // Musicians linked into 3+ things are the bridges — label them.
       n.toggleClass('notable', n.data('kind') === 'person' && n.degree(false) >= 3);
     });
+    applyRelFilter();
+    renderRelFilter();
     updateOverlays();
     runLayout();
   }
+
+  // ---------- Relationship-type filter ----------
+  // Some relationships swamp everything else — Nirvana pulls in dozens of
+  // tribute acts — so each type can be switched off. Hiding a type also
+  // hides any node left with nothing visible attaching it to the graph.
+  const hiddenTypes = new Set();
+
+  function applyRelFilter() {
+    cy.batch(() => {
+      cy.edges().forEach((ed) => ed.toggleClass('f-off', hiddenTypes.has(ed.data('type'))));
+      cy.nodes().forEach((n) => {
+        const keep = n.hasClass('expanded') || n.hasClass('seed')
+          || n.connectedEdges().some((ed) => !ed.hasClass('f-off'));
+        n.toggleClass('f-off', !keep);
+      });
+    });
+  }
+
+  function renderRelFilter() {
+    const counts = new Map();
+    cy.edges().forEach((ed) => {
+      const t = ed.data('type');
+      counts.set(t, (counts.get(t) || 0) + 1);
+    });
+    el.relfilter.hidden = counts.size === 0;
+    if (!counts.size) return;
+    const rows = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    el.relList.innerHTML = rows.map(([type, n]) => {
+      const off = hiddenTypes.has(type);
+      return `<label class="rel-row${off ? ' off' : ''}">`
+        + `<input type="checkbox" data-rel="${esc(type)}"${off ? '' : ' checked'}>`
+        + `<i class="line line-${REL_CLASS[type] || 'other'}"></i>`
+        + `<span class="rel-name">${esc(TYPE_SHORT[type] || type)}</span>`
+        + `<span class="rel-count">${n}</span></label>`;
+    }).join('');
+    const off = rows.filter(([t]) => hiddenTypes.has(t)).length;
+    el.relState.textContent = off ? `${rows.length - off}/${rows.length}` : '';
+  }
+
+  el.relList.addEventListener('change', (e) => {
+    const cb = e.target.closest('[data-rel]');
+    if (!cb) return;
+    if (cb.checked) hiddenTypes.delete(cb.dataset.rel);
+    else hiddenTypes.add(cb.dataset.rel);
+    applyRelFilter();
+    renderRelFilter();
+    runLayout();
+  });
 
   // Sweep satellites that no longer connect to anything worth keeping.
   function removeOrphans() {
@@ -413,6 +467,8 @@
     cy.resize();
     layoutObj = cy.layout({
       name: 'cose',
+      // Filtered-out elements shouldn't reserve space in the layout.
+      eles: cy.elements(':visible'),
       animate: 'end',
       animationDuration: 500,
       fit: true,
@@ -432,7 +488,7 @@
     clearTimeout(runLayout._refit);
     runLayout._refit = setTimeout(() => {
       cy.resize();
-      cy.animate({ fit: { eles: cy.elements(), padding: 70 } }, { duration: 220 });
+      cy.animate({ fit: { eles: cy.elements(':visible'), padding: 70 } }, { duration: 220 });
     }, 640);
   }
 
@@ -475,6 +531,7 @@
     el.empty.hidden = has;
     el.legend.hidden = !has;
     el.credit.hidden = has; // the legend carries the credit once a graph exists
+    if (!has) el.relfilter.hidden = true;
     updateTimeRange();
   }
 
@@ -633,9 +690,10 @@
   for (const head of document.querySelectorAll('.hud-head')) {
     const box = head.closest('.hud-box');
     const key = 'musikrawlr.hud.' + head.dataset.hud;
-    let saved = false;
-    try { saved = localStorage.getItem(key) === '1'; } catch { /* private mode */ }
-    setHudCollapsed(box, head, saved);
+    // Closed by default — the canvas is the point; open state is remembered.
+    let collapsed = true;
+    try { collapsed = localStorage.getItem(key) !== '0'; } catch { /* private mode */ }
+    setHudCollapsed(box, head, collapsed);
     head.addEventListener('click', () => {
       const on = !box.classList.contains('collapsed');
       setHudCollapsed(box, head, on);
@@ -980,6 +1038,7 @@
     exitTime();
     cy.elements().remove();
     expanded.clear();
+    hiddenTypes.clear();
     hueCounter = 0;
     panelEmpty();
     updateOverlays();
