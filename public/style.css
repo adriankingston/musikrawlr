@@ -315,7 +315,7 @@ main { flex: 1; display: flex; min-height: 0; }
 
 /* ---------- Detail panel ---------- */
 .panel-empty { color: var(--muted); margin-top: 8px; }
-.pe-hint { font-size: 12.5px; }
+.pe-hint { font-size: 13.5px; line-height: 1.5; }
 
 .p-name {
   font-family: 'Cal Sans', system-ui, sans-serif;
@@ -370,10 +370,10 @@ main { flex: 1; display: flex; min-height: 0; }
   margin: 6px 0 8px;
 }
 .p-bio {
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: var(--muted);
-  margin: 6px 0;
+  font-size: 15px;
+  line-height: 1.62;
+  color: #c2d3da;
+  margin: 8px 0 4px;
 }
 .p-bio a { color: var(--accent); text-decoration: none; white-space: nowrap; }
 .p-albums { display: flex; flex-wrap: wrap; gap: 6px; }
