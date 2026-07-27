@@ -46,6 +46,14 @@ Cal Sans  (public/fonts/calsans-latin.woff2, public/fonts/calsans-latinext.woff2
   Licensed under the SIL Open Font License, Version 1.1.
   https://fonts.google.com/specimen/Cal+Sans
 
+Jersey 10 Charted  (public/fonts/jersey10charted-latin.woff2,
+                    public/fonts/jersey10charted-latinext.woff2)
+  The wordmark and detail-panel titles are set in Jersey 10 Charted
+  (latin + latin-extended subsets, self-hosted).
+  Copyright Sarah Cadigan-Fried.
+  Licensed under the SIL Open Font License, Version 1.1.
+  https://fonts.google.com/specimen/Jersey+10+Charted
+
 
 ================================================================================
 DATA RETRIEVED AT RUNTIME

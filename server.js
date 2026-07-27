@@ -1,4 +1,4 @@
-// Band graph — local server + polite MusicBrainz proxy.
+// musikrawlr — local server + polite MusicBrainz proxy.
 //
 // Zero dependencies. Serves ./public and routes /api/* to the MusicBrainz
 // web service (https://musicbrainz.org/ws/2/), respecting its etiquette:
@@ -29,7 +29,7 @@ const PORT = process.env.PORT || 4700;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const CACHE_DIR = path.join(__dirname, '.cache');
 const MB = 'https://musicbrainz.org/ws/2/';
-const UA = `BandGraph/0.1 (${process.env.MB_CONTACT || 'no-contact-set; local dev'})`;
+const UA = `musikrawlr/0.1 (${process.env.MB_CONTACT || 'no-contact-set; local dev'})`;
 
 fs.mkdirSync(CACHE_DIR, { recursive: true });
 
@@ -263,7 +263,7 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`\n  Band graph → http://localhost:${PORT}\n`);
+  console.log(`\n  musikrawlr → http://localhost:${PORT}\n`);
   if (!process.env.MB_CONTACT) {
     console.log('  ⚠  No MB_CONTACT in .env — MusicBrainz asks for contact info in the User-Agent.\n');
   }

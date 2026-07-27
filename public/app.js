@@ -1,4 +1,4 @@
-// Band graph — search MusicBrainz artists, grow a band↔musician graph.
+// musikrawlr — search MusicBrainz artists, grow a band↔musician graph.
 'use strict';
 (() => {
   const $ = (s) => document.querySelector(s);
