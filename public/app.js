@@ -1200,10 +1200,16 @@
   let searchTimer = 0;
   let searchSeq = 0;
   let currentResults = [];
+  let resultsQuery = null; // which query the list on screen belongs to
   let active = -1;
 
   function showResults(html) { el.results.innerHTML = html; el.results.hidden = false; }
-  function hideResults() { el.results.hidden = true; currentResults = []; active = -1; }
+  function hideResults() {
+    el.results.hidden = true;
+    currentResults = [];
+    resultsQuery = null;
+    active = -1;
+  }
 
   async function doSearch(q) {
     const seq = ++searchSeq;
@@ -1212,6 +1218,7 @@
       const d = await api('/api/search?q=' + encodeURIComponent(q));
       if (seq !== searchSeq) return;
       currentResults = (d.artists || []).slice(0, 10);
+      resultsQuery = q;
       active = -1;
       if (!currentResults.length) return showResults('<div class="r-hint">No artists found.</div>');
       showResults(currentResults.map((a, i) => {
@@ -1228,6 +1235,14 @@
     clearTimeout(searchTimer);
     const q = el.q.value.trim();
     if (q.length < 2) { hideResults(); return; }
+    // Retire the old list the instant the query changes. Otherwise it sits
+    // there for the whole debounce and can still be picked — which is how
+    // typing "circle jerks" landed on Finnish post-rockers Circle, the top
+    // hit for the half-typed "circle".
+    currentResults = [];
+    resultsQuery = null;
+    active = -1;
+    showResults('<div class="r-hint">Searching…</div>');
     searchTimer = setTimeout(() => doSearch(q), 320);
   });
 
@@ -1244,6 +1259,15 @@
       items[active].scrollIntoView({ block: 'nearest' });
     } else if (e.key === 'Enter') {
       e.preventDefault();
+      const q = el.q.value.trim();
+      // Enter can beat the debounce. If the list doesn't belong to what's in
+      // the box, search now and take the top hit for the query you typed.
+      if (resultsQuery !== q) {
+        if (q.length < 2) return;
+        clearTimeout(searchTimer);
+        doSearch(q).then(() => { if (currentResults[0]) addSeed(currentResults[0]); });
+        return;
+      }
       const pick = currentResults[active >= 0 ? active : 0];
       if (pick) addSeed(pick);
     } else if (e.key === 'Escape') {
@@ -1253,7 +1277,8 @@
 
   el.results.addEventListener('mousedown', (e) => {
     const b = e.target.closest('.r-item');
-    if (b) { e.preventDefault(); addSeed(currentResults[+b.dataset.i]); }
+    const pick = b && currentResults[+b.dataset.i];
+    if (pick) { e.preventDefault(); addSeed(pick); }
   });
 
   document.addEventListener('click', (e) => {
@@ -1263,6 +1288,7 @@
   function addSeed(a) {
     hideResults();
     el.q.value = '';
+    const already = expanded.has(a.id);
     const n = ensureNode(a, {
       renderedPosition: { x: el.stage.clientWidth / 2, y: el.stage.clientHeight / 2 },
     });
@@ -1270,6 +1296,13 @@
     updateOverlays();
     cy.$(':selected').unselect();
     n.select();
+    if (already) {
+      // Re-adding something already open used to do nothing at all — say so
+      // and fly to it, rather than looking like a dead click.
+      setStatus(`${a.name} is already here`, false, 2600);
+      cy.animate({ center: { eles: n } }, { duration: 250 });
+      return;
+    }
     expand(a.id);
   }
 
