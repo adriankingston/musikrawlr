@@ -96,11 +96,28 @@
     return hue ? mixHex(hue, '#ffffff', 0.3) : '#dcecff';
   }
 
+  // Years served, so the people who WERE the band stand out from the dozens
+  // who passed through. Unlike edgeWindow (which borrows the band's whole
+  // life-span so undated members still show on the timeline), this counts
+  // ONLY recorded dates — otherwise every undated member ties with the
+  // founder. An unknown start means unknown tenure, not a long one.
+  function tenureOf(ed) {
+    const d = ed.data();
+    if (d.by == null) return 0;
+    let end = d.ey;
+    if (end == null) {
+      // Still a member: runs to the band's end, or to now if it's going.
+      const bandEnd = ed.target().data('lsEy');
+      end = d.ended ? bandEnd : (bandEnd ?? NOW_YEAR);
+    }
+    return end == null ? 0 : Math.max(0, end - d.by);
+  }
+
   function nodeSize(n) {
     const deg = n.data('deg') || 0;
-    return n.hasClass('expanded')
-      ? Math.min(34 + deg * 2.4, 64)
-      : Math.min(13 + deg * 3, 30);
+    if (n.hasClass('expanded')) return Math.min(34 + deg * 2.4, 64);
+    const yrs = Math.min(n.data('tenure') || 0, 45);
+    return Math.min(13 + deg * 3 + yrs * 0.45, 38);
   }
 
   // Gentle per-edge arc (deterministic from the id) — organic, not spokes.
@@ -162,7 +179,10 @@
         'overlay-opacity': 0,
       } },
       { selector: 'edge[cls="member"]', style: {
-        width: 1.7, 'line-style': 'solid', 'line-color': edgeColor, 'line-opacity': 0.6,
+        width: 'mapData(tenure, 0, 45, 1.2, 4.2)',
+        'line-style': 'solid',
+        'line-color': edgeColor,
+        'line-opacity': 0.6,
       } },
       { selector: 'edge[cls="family"]', style: {
         width: 1.6, 'line-style': 'dotted', 'line-color': p.family, 'line-opacity': 0.8,
@@ -360,8 +380,12 @@
   // Shared refresh after any structural change: degree-driven sizing,
   // bridge labels, filters, overlays/timeline, and a fresh layout pass.
   function graphChanged() {
+    cy.edges('[cls="member"]').forEach((ed) => ed.data('tenure', tenureOf(ed)));
     cy.nodes().forEach((n) => {
       n.data('deg', Math.min(n.degree(false), 12));
+      // Longest stint on any of this node's memberships drives its size.
+      n.data('tenure', n.connectedEdges('[cls="member"]')
+        .reduce((max, ed) => Math.max(max, ed.data('tenure') || 0), 0));
       // Musicians linked into 3+ things are the bridges — label them.
       n.toggleClass('notable', n.data('kind') === 'person' && n.degree(false) >= 3);
     });
@@ -726,15 +750,30 @@
     return out.slice(0, 8);
   }
 
+  // Years served on a single relationship, where the data allows it.
+  function relSpan(r) {
+    const b = yr(r.begin);
+    if (b == null) return null;
+    const e = yr(r.end);
+    const end = e != null ? e : (r.ended ? null : NOW_YEAR);
+    return end == null ? null : Math.max(0, end - b);
+  }
+
   function relSection(title, rels, withType) {
     if (!rels.length) return '';
-    const sorted = [...rels].sort((a, b) => (a.begin || '9999').localeCompare(b.begin || '9999'));
+    // Longest stints first — the people who WERE the band rise to the top,
+    // rather than being buried among dozens of short-term members.
+    const sorted = [...rels].sort((a, b) =>
+      (relSpan(b) ?? -1) - (relSpan(a) ?? -1)
+      || (a.begin || '9999').localeCompare(b.begin || '9999'));
     const rows = sorted.map((r) => {
       const attrs = (r.attributes || []).join(', ');
       const sub = withType
         ? `<span class="r-attrs">${esc(r.type)}${attrs ? ' · ' + esc(attrs) : ''}</span>`
         : (attrs ? `<span class="r-attrs">${esc(attrs)}</span>` : '');
-      return `<div class="p-rel"><span><a data-goto="${r.artist.id}" data-name="${esc(r.artist.name)}">${esc(r.artist.name)}</a>${sub}</span><span class="r-years">${esc(fmtYears(r))}</span></div>`;
+      const n = relSpan(r);
+      const dur = n != null && n >= 1 ? `<i>${n} yr${n === 1 ? '' : 's'}</i>` : '';
+      return `<div class="p-rel"><span><a data-goto="${r.artist.id}" data-name="${esc(r.artist.name)}">${esc(r.artist.name)}</a>${sub}</span><span class="r-years">${esc(fmtYears(r))}${dur}</span></div>`;
     }).join('');
     return `<div class="p-section"><h3>${esc(title)} · ${rels.length}</h3>${rows}</div>`;
   }
