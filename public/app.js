@@ -7,7 +7,7 @@
     legend: $('#legend'), status: $('#status'), tip: $('#tip'), stage: $('#stage'),
     fit: $('#fit'), clear: $('#clear'), glow: $('#glow'),
     credit: $('#credit'), timebar: $('#timebar'), tbPlay: $('#tb-play'),
-    tbYear: $('#tb-year'), tbRange: $('#tb-range'), tbHist: $('#tb-hist'), tbAll: $('#tb-all'),
+    tbYear: $('#hud-year'), tbRange: $('#tb-range'), tbHist: $('#tb-hist'), tbAll: $('#tb-all'),
   };
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -622,6 +622,27 @@
       ctx.fillRect(i * bw + 0.5, h - bh, Math.max(1, bw - 1), bh);
     });
     ctx.globalAlpha = 1;
+  }
+
+  // ---------- HUD collapse/expand ----------
+  function setHudCollapsed(box, head, on) {
+    box.classList.toggle('collapsed', on);
+    head.setAttribute('aria-expanded', String(!on));
+  }
+
+  for (const head of document.querySelectorAll('.hud-head')) {
+    const box = head.closest('.hud-box');
+    const key = 'musikrawlr.hud.' + head.dataset.hud;
+    let saved = false;
+    try { saved = localStorage.getItem(key) === '1'; } catch { /* private mode */ }
+    setHudCollapsed(box, head, saved);
+    head.addEventListener('click', () => {
+      const on = !box.classList.contains('collapsed');
+      setHudCollapsed(box, head, on);
+      try { localStorage.setItem(key, on ? '1' : '0'); } catch { /* private mode */ }
+      // The histogram canvas measures 0 wide while hidden — redraw on reveal.
+      if (!on && head.dataset.hud === 'time') drawHist();
+    });
   }
 
   el.tbPlay.addEventListener('click', playTime);

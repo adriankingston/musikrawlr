@@ -49,25 +49,39 @@
       </p>
     </div>
 
-    <div id="legend" hidden>
-      <span class="lg-item"><i class="dot dot-hub"></i>Band, expanded — one hue each</span>
-      <span class="lg-item"><i class="dot dot-phub"></i>Musician, expanded</span>
-      <span class="lg-item"><i class="dot dot-leaf"></i>Not yet explored</span>
-      <span class="lg-item"><i class="line line-member"></i>Member</span>
-      <span class="lg-item"><i class="line line-family"></i>Family</span>
-      <span class="lg-item"><i class="line line-collab"></i>Collaboration</span>
-      <span class="lg-hint">Double-click expands · right-click closes</span>
-      <span class="lg-item lg-credit">Data: <a href="https://musicbrainz.org" target="_blank" rel="noopener">MusicBrainz</a></span>
-    </div>
+    <div id="hud">
+      <section id="legend" class="hud-box" hidden>
+        <button class="hud-head" data-hud="legend" aria-expanded="true">
+          <span class="hud-title">Key</span>
+          <span class="hud-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="hud-body legend-body">
+          <span class="lg-item"><i class="dot dot-hub"></i>Band, expanded — one hue each</span>
+          <span class="lg-item"><i class="dot dot-phub"></i>Musician, expanded</span>
+          <span class="lg-item"><i class="dot dot-leaf"></i>Not yet explored</span>
+          <span class="lg-item"><i class="line line-member"></i>Member</span>
+          <span class="lg-item"><i class="line line-family"></i>Family</span>
+          <span class="lg-item"><i class="line line-collab"></i>Collaboration</span>
+          <span class="lg-hint">Double-click expands · right-click closes</span>
+          <span class="lg-item lg-credit">Data: <a href="https://musicbrainz.org" target="_blank" rel="noopener">MusicBrainz</a></span>
+        </div>
+      </section>
 
-    <div id="timebar" hidden>
-      <button id="tb-play" class="tb-btn" title="Play through the years">▶</button>
-      <span id="tb-year" class="tb-year">All time</span>
-      <div class="tb-rail">
-        <canvas id="tb-hist" height="26" aria-hidden="true"></canvas>
-        <input id="tb-range" type="range" min="1950" max="2026" step="1" value="2026" aria-label="Filter memberships by year">
-      </div>
-      <button id="tb-all" class="tb-btn tb-all" title="Stop filtering by year">All</button>
+      <section id="timebar" class="hud-box" hidden>
+        <button class="hud-head" data-hud="time" aria-expanded="true">
+          <span class="hud-title">Timeline</span>
+          <span class="hud-state" id="hud-year">All time</span>
+          <span class="hud-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="hud-body time-body">
+          <button id="tb-play" class="tb-btn" title="Play through the years">▶</button>
+          <div class="tb-rail">
+            <canvas id="tb-hist" height="26" aria-hidden="true"></canvas>
+            <input id="tb-range" type="range" min="1950" max="2026" step="1" value="2026" aria-label="Filter memberships by year">
+          </div>
+          <button id="tb-all" class="tb-btn tb-all" title="Stop filtering by year">All</button>
+        </div>
+      </section>
     </div>
 
     <div id="status" hidden></div>

@@ -232,21 +232,62 @@ main { flex: 1; display: flex; min-height: 0; }
 }
 .chip:hover { border-color: var(--accent); color: var(--accent); }
 
-#legend {
+/* ---------- HUD (key + timeline, one aligned stack) ---------- */
+#hud {
   position: absolute;
+  top: 12px;
   left: 12px;
-  bottom: 12px;
+  z-index: 16;
+  width: 330px;
+  max-width: calc(100% - 24px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* Only the boxes should catch clicks — the gaps stay part of the canvas. */
+  pointer-events: none;
+}
+.hud-box {
+  pointer-events: auto;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: 1px solid var(--line);
+}
+.hud-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 10.5px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.hud-head:hover { color: var(--accent); }
+.hud-title { flex: 1; text-align: left; }
+.hud-state {
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12.5px;
+}
+.hud-caret { font-size: 10px; transition: transform .15s ease; }
+.hud-box.collapsed .hud-head { border-bottom: 0; }
+.hud-box.collapsed .hud-caret { transform: rotate(-90deg); }
+.hud-box.collapsed .hud-body { display: none; }
+
+.legend-body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 14px;
-  padding: 8px 12px;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  padding: 8px 10px;
   font-size: 12px;
   color: var(--muted);
-  max-width: min(92%, 640px);
 }
 .lg-item { display: inline-flex; align-items: center; gap: 6px; }
 .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
@@ -263,19 +304,11 @@ main { flex: 1; display: flex; min-height: 0; }
 .lg-credit a { color: inherit; }
 
 /* ---------- Timeline bar ---------- */
-#timebar {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
-  z-index: 16;
+.time-body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
-  background: color-mix(in srgb, var(--surface) 90%, transparent);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  width: min(560px, calc(100% - 24px));
+  padding: 8px 10px;
 }
 .tb-btn {
   flex: none;
@@ -293,13 +326,6 @@ main { flex: 1; display: flex; min-height: 0; }
 }
 .tb-btn:hover { border-color: var(--accent); color: var(--accent); }
 .tb-all { width: auto; padding: 0 11px; font-size: 12px; }
-.tb-year {
-  flex: none;
-  min-width: 62px;
-  text-align: center;
-  font-family: 'Cal Sans', system-ui, sans-serif;
-  font-size: 15px;
-}
 .tb-rail { flex: 1; min-width: 0; }
 #tb-hist { display: block; width: 100%; height: 26px; }
 /* Native range controls are pill-shaped — rebuild them square. */
@@ -340,10 +366,6 @@ main { flex: 1; display: flex; min-height: 0; }
   border-radius: 0;
 }
 #tb-range:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
-/* Keep the legend clear of the timebar when the stage narrows. */
-@media (max-width: 980px) {
-  #legend { bottom: 76px; }
-}
 
 #status {
   position: absolute;
@@ -504,6 +526,16 @@ main { flex: 1; display: flex; min-height: 0; }
 
 /* ---------- Narrow screens ---------- */
 @media (max-width: 800px) {
+  /* Bottom of the stage on narrow screens — out of the thumb's way at the
+     top, and clear of the header. */
+  #hud {
+    top: auto;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+  }
   main { flex-direction: column; }
   #panel {
     width: auto;
