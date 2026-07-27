@@ -1029,7 +1029,11 @@
 
   el.empty.addEventListener('click', (e) => {
     const c = e.target.closest('[data-seed]');
-    if (c) seedByName(c.dataset.seed);
+    if (!c) return;
+    // Starters carry their MBID: several are ambiguous by name (four
+    // different bands are called "The Swingers"), so never guess.
+    if (c.dataset.mbid) addSeed({ id: c.dataset.mbid, name: c.dataset.seed });
+    else seedByName(c.dataset.seed);
   });
 
   // ---------- Toolbar ----------
