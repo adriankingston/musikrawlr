@@ -113,11 +113,55 @@
     return end == null ? 0 : Math.max(0, end - d.by);
   }
 
+  const bandSpan = (band) => {
+    const by = band.data('lsBy');
+    if (by == null) return null;
+    return Math.max(1, (band.data('lsEy') ?? NOW_YEAR) - by);
+  };
+
+  // How central someone was to a band, 0–1. Share of the band's own lifetime
+  // leads, because absolute years don't compare across bands: Kurt Cobain was
+  // 100% of Nirvana's seven years, and shouldn't read smaller than a mid-tier
+  // member of a band that ran for forty. Absolute length still counts for
+  // something, so a 42-year run outranks a 3-year band's founder.
+  function edgeProminence(ed) {
+    const yrs = tenureOf(ed);
+    const span = bandSpan(ed.target());
+    const cover = span ? Math.min(1, yrs / span) : 0;
+    return cover * 0.7 + (Math.min(yrs, 45) / 45) * 0.3;
+  }
+
+  function computeProminence() {
+    cy.edges('[cls="member"]').forEach((ed) => {
+      ed.data('tenure', tenureOf(ed));
+      ed.data('eprom', edgeProminence(ed));
+    });
+    cy.nodes().forEach((n) => {
+      const eds = n.connectedEdges('[cls="member"]');
+      let base = 0;
+      let original = false;
+      const stints = new Map();
+      eds.forEach((ed) => {
+        base = Math.max(base, ed.data('eprom') || 0);
+        if ((ed.data('attrs') || '').includes('original')) original = true;
+        const other = ed.source().id() === n.id() ? ed.target().id() : ed.source().id();
+        stints.set(other, (stints.get(other) || 0) + 1);
+      });
+      // Left and came back: Karl Burns rejoined The Fall repeatedly — that
+      // churn is itself a sign of being central to the band.
+      const rejoins = Math.max(0, Math.max(0, ...stints.values()) - 1);
+      // Fame only ever ADDS. Someone with no Wikipedia entry must never be
+      // pushed below a famous blow-in, and coverage is thin for independent
+      // and non-Anglophone scenes.
+      const fame = (Math.min(n.data('fame') || 0, 25) / 25) * 0.35;
+      n.data('prom', Math.min(1, base + (original ? 0.08 : 0) + Math.min(rejoins * 0.06, 0.12) + fame));
+    });
+  }
+
   function nodeSize(n) {
     const deg = n.data('deg') || 0;
     if (n.hasClass('expanded')) return Math.min(34 + deg * 2.4, 64);
-    const yrs = Math.min(n.data('tenure') || 0, 45);
-    return Math.min(13 + deg * 3 + yrs * 0.45, 38);
+    return Math.min(14 + deg * 2 + (n.data('prom') || 0) * 24, 40);
   }
 
   // Gentle per-edge arc (deterministic from the id) — organic, not spokes.
@@ -179,7 +223,7 @@
         'overlay-opacity': 0,
       } },
       { selector: 'edge[cls="member"]', style: {
-        width: 'mapData(tenure, 0, 45, 1.2, 4.2)',
+        width: 'mapData(eprom, 0, 1, 1.2, 4.2)',
         'line-style': 'solid',
         'line-color': edgeColor,
         'line-opacity': 0.6,
@@ -380,15 +424,13 @@
   // Shared refresh after any structural change: degree-driven sizing,
   // bridge labels, filters, overlays/timeline, and a fresh layout pass.
   function graphChanged() {
-    cy.edges('[cls="member"]').forEach((ed) => ed.data('tenure', tenureOf(ed)));
     cy.nodes().forEach((n) => {
       n.data('deg', Math.min(n.degree(false), 12));
-      // Longest stint on any of this node's memberships drives its size.
-      n.data('tenure', n.connectedEdges('[cls="member"]')
-        .reduce((max, ed) => Math.max(max, ed.data('tenure') || 0), 0));
       // Musicians linked into 3+ things are the bridges — label them.
       n.toggleClass('notable', n.data('kind') === 'person' && n.degree(false) >= 3);
     });
+    computeProminence();
+    queueFame();
     applyRelFilter();
     renderRelFilter();
     updateOverlays();
@@ -442,6 +484,36 @@
     renderRelFilter();
     runLayout();
   });
+
+  // ---------- Fame (Wikidata sitelinks), batched ----------
+  // One query covers a whole line-up, so this is cheap; it lands a beat after
+  // the graph draws and quietly re-sizes the nodes.
+  const fameAsked = new Set();
+  let fameTimer = 0;
+
+  function queueFame() {
+    clearTimeout(fameTimer);
+    fameTimer = setTimeout(fetchFame, 350);
+  }
+
+  async function fetchFame() {
+    const ids = cy.nodes().map((n) => n.id()).filter((id) => !fameAsked.has(id));
+    if (!ids.length) return;
+    ids.forEach((id) => fameAsked.add(id));
+    for (let i = 0; i < ids.length; i += 100) {
+      try {
+        const d = await api('/api/notability?ids=' + ids.slice(i, i + 100).join(','));
+        cy.batch(() => {
+          for (const [id, n] of Object.entries(d.sitelinks || {})) {
+            const node = cy.getElementById(id);
+            if (node.nonempty() && n) node.data('fame', n);
+          }
+        });
+        computeProminence();
+        queueGlow();
+      } catch { /* fame is a bonus — a failure just leaves sizes as they are */ }
+    }
+  }
 
   // Sweep satellites that no longer connect to anything worth keeping.
   function removeOrphans() {
@@ -938,6 +1010,27 @@
     }
   });
 
+  // Says why a node is sized the way it is — the longest stint, what share of
+  // that band's life it covers, and how widely written about they are.
+  function whyProminent(n) {
+    const eds = n.connectedEdges('[cls="member"]');
+    const bits = [];
+    if (eds.length) {
+      const best = eds.max((ed) => ed.data('eprom') || 0);
+      const ed = best.ele;
+      const yrs = ed.data('tenure');
+      const span = bandSpan(ed.target());
+      if (yrs) {
+        const pct = span ? Math.round(Math.min(1, yrs / span) * 100) : null;
+        bits.push(`${yrs} yr${yrs === 1 ? '' : 's'} in ${ed.target().data('name')}`
+          + (pct != null ? ` · ${pct === 100 ? 'its whole life' : pct + '% of its life'}` : ''));
+      }
+    }
+    const fame = n.data('fame');
+    if (fame) bits.push(`${fame} Wikipedia article${fame === 1 ? '' : 's'}`);
+    return bits.length ? `<div class="t-sub">${esc(bits.join(' · '))}</div>` : '';
+  }
+
   // Tooltips
   function showTip(html, e) {
     el.tip.innerHTML = html;
@@ -956,7 +1049,7 @@
     const hint = expanded.has(n.id())
       ? '<div class="t-sub">Right-click to collapse</div>'
       : '<div class="t-sub">Double-click to expand · right-click to remove</div>';
-    showTip(`<strong>${esc(n.data('name'))}</strong>${sub ? `<div class="t-sub">${esc(sub)}</div>` : ''}${hint}`, e);
+    showTip(`<strong>${esc(n.data('name'))}</strong>${sub ? `<div class="t-sub">${esc(sub)}</div>` : ''}${whyProminent(n)}${hint}`, e);
   });
   cy.on('mouseout', 'node', (e) => {
     e.target.removeClass('hover');

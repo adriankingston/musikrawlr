@@ -108,6 +108,8 @@ function mbFetch(pathAndQuery) {
   return p;
 }
 
+const MBID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 // Lucene special characters would break (or hijack) the search query syntax.
 const luceneEscape = (s) => s.replace(/[+\-&|!(){}[\]^"~*?:\\/]/g, '\\$&');
 
@@ -140,7 +142,7 @@ async function apiSearch(req, res, url) {
 
 async function apiArtist(req, res, url) {
   const id = (url.searchParams.get('id') || '').trim();
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) {
+  if (!MBID_RE.test(id)) {
     return sendJson(res, 400, { error: 'Invalid MBID' });
   }
   const data = await mbFetch(`artist/${id}?inc=artist-rels+url-rels+genres`);
@@ -213,10 +215,54 @@ async function apiEnrich(req, res, url) {
   sendJson(res, 200, out);
 }
 
+// How widely written-about an artist is, as a "fame" amplifier for the
+// main-member logic. Wikidata stores MusicBrainz ids (P434), so one SPARQL
+// query resolves a whole band's line-up at once — no name matching, and no
+// per-member request storm. Counts are cached forever (they barely move).
+const NOTA_FILE = path.join(CACHE_DIR, 'notability.json');
+let notaStore = null;
+
+function loadNotability() {
+  if (!notaStore) {
+    try { notaStore = JSON.parse(fs.readFileSync(NOTA_FILE, 'utf8')); } catch { notaStore = {}; }
+  }
+  return notaStore;
+}
+
+async function apiNotability(req, res, url) {
+  const ids = (url.searchParams.get('ids') || '')
+    .split(',').map((s) => s.trim()).filter((s) => MBID_RE.test(s)).slice(0, 150);
+  if (!ids.length) return sendJson(res, 400, { error: 'No valid ids' });
+
+  const store = loadNotability();
+  const missing = ids.filter((id) => !(id in store));
+  if (missing.length) {
+    const values = missing.map((id) => `"${id}"`).join(' ');
+    const q = `SELECT ?mbid (COUNT(DISTINCT ?sl) AS ?n) WHERE {`
+      + ` VALUES ?mbid { ${values} } ?item wdt:P434 ?mbid .`
+      + ` OPTIONAL { ?sl schema:about ?item } } GROUP BY ?mbid`;
+    try {
+      const r = await fetch('https://query.wikidata.org/sparql?query=' + encodeURIComponent(q), {
+        headers: { 'User-Agent': UA, Accept: 'application/sparql-results+json' },
+      });
+      if (r.ok) {
+        const j = await r.json();
+        for (const b of j.results.bindings) store[b.mbid.value] = Number(b.n.value) || 0;
+      }
+    } catch { /* fame is a bonus signal — never fail the request over it */ }
+    // Anything Wikidata didn't return simply has no item: record the zero so
+    // we don't ask again.
+    for (const id of missing) if (!(id in store)) store[id] = 0;
+    fs.writeFile(NOTA_FILE, JSON.stringify(store), () => {});
+  }
+  sendJson(res, 200, { sitelinks: Object.fromEntries(ids.map((id) => [id, store[id] || 0])) });
+}
+
 const routes = {
   'GET /api/search': apiSearch,
   'GET /api/artist': apiArtist,
   'GET /api/enrich': apiEnrich,
+  'GET /api/notability': apiNotability,
 };
 
 // --- Server ------------------------------------------------------------------
