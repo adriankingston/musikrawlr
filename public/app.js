@@ -8,6 +8,8 @@
     fit: $('#fit'), clear: $('#clear'), glow: $('#glow'),
     credit: $('#credit'), timebar: $('#timebar'), tbPlay: $('#tb-play'),
     relfilter: $('#relfilter'), relList: $('#rel-list'), relState: $('#rel-state'),
+    degrees: $('#degrees'), degA: $('#deg-a'), degB: $('#deg-b'),
+    degState: $('#deg-state'), degResult: $('#deg-result'),
     tbYear: $('#hud-year'), tbRange: $('#tb-range'), tbHist: $('#tb-hist'), tbAll: $('#tb-all'),
   };
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -252,6 +254,13 @@
       { selector: 'edge.t-dim:selected', style: { 'line-opacity': 0.15 } },
       // Filtered out by relationship type — gone entirely, not just dimmed.
       { selector: '.f-off', style: { display: 'none' } },
+      // The route between two artists, once you've found it.
+      { selector: 'node.on-path', style: {
+        'border-width': 3, 'border-color': '#ffffff', 'border-opacity': 1, 'text-opacity': 1,
+      } },
+      { selector: 'edge.on-path', style: {
+        'line-color': '#ffffff', 'line-opacity': 1, width: 3, 'text-opacity': 1,
+      } },
     ];
   }
 
@@ -308,6 +317,7 @@
       // exponential-ish ramp (enough stops that no banding shows).
       let a = 0.35;
       if (n.selected()) a = 0.6;
+      if (n.hasClass('on-path')) a = Math.max(a, 0.72); // the found route burns brighter
       if (n.hasClass('t-dim')) a *= 0.08;
       const [cr, cg, cb] = hexToRgb(glowColor(n));
       const g = glowCtx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, R);
@@ -434,6 +444,7 @@
       n.toggleClass('notable', n.data('kind') === 'person' && n.degree(false) >= 3);
     });
     computeProminence();
+    refreshDegrees();
     queueFame();
     applyRelFilter();
     renderRelFilter();
@@ -487,6 +498,106 @@
     applyRelFilter();
     renderRelFilter();
     runLayout();
+  });
+
+  // ---------- Six degrees ----------
+  // How many hops separate two artists on the canvas. The route is computed
+  // over what you've actually uncovered, so "no route yet" is the game: keep
+  // expanding until the two halves meet.
+  let degPrev = null; // last known distance, to notice the moment it connects
+  let degUserPicked = false; // once you choose ends yourself, we stop retargeting
+
+  function optionsFor(sel, keep) {
+    const nodes = cy.nodes(':visible').sort((a, b) =>
+      a.data('name').localeCompare(b.data('name')));
+    sel.innerHTML = nodes.map((n) =>
+      `<option value="${n.id()}">${esc(n.data('name'))}</option>`).join('');
+    if (keep && sel.querySelector(`option[value="${keep}"]`)) sel.value = keep;
+    return nodes;
+  }
+
+  function refreshDegrees() {
+    const nodes = cy.nodes(':visible');
+    el.degrees.hidden = nodes.length < 2;
+    if (el.degrees.hidden) {
+      cy.elements().removeClass('on-path');
+      el.degState.textContent = '';
+      degPrev = null;
+      return;
+    }
+    let a = el.degA.value;
+    let b = el.degB.value;
+    // Until you choose your own ends, the game tracks what you've opened:
+    // first hub against the most recent one. `expanded` is a Set, so it
+    // already remembers the order you opened them in.
+    if (!degUserPicked) {
+      const hubs = [...expanded].filter((id) => cy.getElementById(id).nonempty());
+      if (hubs.length > 1) {
+        a = hubs[0];
+        b = hubs[hubs.length - 1];
+      } else {
+        a = a || nodes[0].id();
+        b = b || nodes[nodes.length - 1].id();
+      }
+    }
+    optionsFor(el.degA, a);
+    optionsFor(el.degB, b);
+    computeDegrees({ announce: true });
+  }
+
+  function computeDegrees(opts = {}) {
+    cy.elements().removeClass('on-path');
+    const a = cy.getElementById(el.degA.value);
+    const b = cy.getElementById(el.degB.value);
+    if (a.empty() || b.empty() || a.id() === b.id()) {
+      el.degState.textContent = '';
+      el.degResult.innerHTML = '<span class="pe-hint">Pick two different artists.</span>';
+      degPrev = null;
+      return;
+    }
+    const dij = cy.elements(':visible').dijkstra({ root: a, weight: () => 1, directed: false });
+    const dist = dij.distanceTo(b);
+
+    if (!Number.isFinite(dist)) {
+      el.degState.textContent = 'no route';
+      el.degResult.innerHTML = '<span class="pe-hint">No route yet — expand members and'
+        + ' bands until the two sides meet.</span>';
+      degPrev = Infinity;
+      return;
+    }
+
+    const path = dij.pathTo(b);
+    path.addClass('on-path');
+    const hops = path.nodes();
+    el.degState.textContent = `${dist} step${dist === 1 ? '' : 's'}`;
+    const chain = hops.map((n, i) =>
+      (i ? '<span class="deg-sep"> → </span>' : '')
+      + `<button data-goto="${n.id()}">${esc(n.data('name'))}</button>`).join('');
+    el.degResult.innerHTML = `<span class="deg-hit">${dist} step${dist === 1 ? '' : 's'}</span>`
+      + ` apart<div class="deg-chain">${chain}</div>`;
+
+    // Celebrate only when the GRAPH closed the gap. Switching the dropdown
+    // from an unconnected pair to a connected one isn't a discovery.
+    if (opts.announce && degPrev === Infinity) {
+      const via = hops.slice(1, -1).map((n) => n.data('name')).join(' → ');
+      setStatus(`Connected in ${dist} steps${via ? ` · via ${via}` : ''}`, false, 6000);
+      queueGlow();
+    }
+    degPrev = dist;
+  }
+
+  const degPick = () => { degUserPicked = true; degPrev = null; computeDegrees(); };
+  el.degA.addEventListener('change', degPick);
+  el.degB.addEventListener('change', degPick);
+  el.degResult.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-goto]');
+    if (!b) return;
+    const n = cy.getElementById(b.dataset.goto);
+    if (n.nonempty()) {
+      cy.$(':selected').unselect();
+      n.select();
+      cy.animate({ center: { eles: n } }, { duration: 250 });
+    }
   });
 
   // ---------- Fame (Wikidata sitelinks), batched ----------
@@ -1202,8 +1313,12 @@
     expanded.clear();
     hiddenTypes.clear();
     hueCounter = 0;
+    el.degA.innerHTML = '';
+    el.degB.innerHTML = '';
+    degUserPicked = false;
     panelEmpty();
     updateOverlays();
+    refreshDegrees();
     setStatus('');
   });
 

@@ -304,6 +304,36 @@ main { flex: 1; display: flex; min-height: 0; }
 .lg-hint { opacity: .8; }
 .lg-credit a { color: inherit; }
 
+/* ---------- Six degrees ---------- */
+.deg-body { padding: 8px 10px; }
+.deg-picks { display: flex; align-items: center; gap: 6px; }
+.deg-picks select {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+.deg-arrow { flex: none; color: var(--muted); }
+.deg-result { margin-top: 8px; font-size: 12px; color: var(--muted); }
+.deg-hit { color: var(--accent); font-weight: 700; }
+.deg-chain { margin-top: 5px; line-height: 1.5; color: var(--text); }
+.deg-chain button {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+.deg-chain button:hover { color: var(--accent); }
+.deg-chain .deg-sep { color: var(--muted); }
+
 /* ---------- Relationship filter ---------- */
 .rel-body {
   display: flex;
