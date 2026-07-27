@@ -65,7 +65,7 @@
   --warn: #ff6b8f;
   --chip: #1c2f37;
   --shadow: 0 10px 30px rgba(0, 6, 8, .6);
-  --radius: 12px;
+  --radius: 0px;
 }
 
 * { box-sizing: border-box; }
@@ -109,7 +109,7 @@ body {
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 0;
   background: var(--bg);
   color: var(--text);
   font: inherit;
@@ -151,7 +151,7 @@ body {
   font-size: 10.5px;
   font-weight: 600;
   padding: 1px 7px;
-  border-radius: 999px;
+  border-radius: 0;
   margin-left: 7px;
   vertical-align: 1px;
   color: #fff;
@@ -164,7 +164,7 @@ body {
 .btn {
   padding: 7px 13px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 0;
   background: var(--surface);
   color: var(--text);
   font: inherit;
@@ -226,7 +226,7 @@ main { flex: 1; display: flex; min-height: 0; }
   font: inherit;
   font-size: 13px;
   padding: 6px 13px;
-  border-radius: 999px;
+  border-radius: 0;
   cursor: pointer;
   margin: 3px;
 }
@@ -284,7 +284,7 @@ main { flex: 1; display: flex; min-height: 0; }
   display: grid;
   place-items: center;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 0;
   background: var(--surface);
   color: var(--text);
   font: inherit;
@@ -302,12 +302,44 @@ main { flex: 1; display: flex; min-height: 0; }
 }
 .tb-rail { flex: 1; min-width: 0; }
 #tb-hist { display: block; width: 100%; height: 26px; }
+/* Native range controls are pill-shaped — rebuild them square. */
 #tb-range {
   display: block;
   width: 100%;
   margin: 2px 0 0;
-  accent-color: var(--accent);
+  -webkit-appearance: none;
+  appearance: none;
+  background: none;
+  cursor: pointer;
 }
+#tb-range::-webkit-slider-runnable-track {
+  height: 4px;
+  background: var(--line);
+  border-radius: 0;
+}
+#tb-range::-moz-range-track {
+  height: 4px;
+  background: var(--line);
+  border-radius: 0;
+}
+#tb-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 8px;
+  height: 16px;
+  margin-top: -6px;
+  background: var(--accent);
+  border: 0;
+  border-radius: 0;
+}
+#tb-range::-moz-range-thumb {
+  width: 8px;
+  height: 16px;
+  background: var(--accent);
+  border: 0;
+  border-radius: 0;
+}
+#tb-range:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 /* Keep the legend clear of the timebar when the stage narrows. */
 @media (max-width: 980px) {
   #legend { bottom: 76px; }
@@ -320,7 +352,7 @@ main { flex: 1; display: flex; min-height: 0; }
   transform: translateX(-50%);
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 0;
   padding: 6px 14px;
   font-size: 12.5px;
   color: var(--muted);
@@ -335,7 +367,7 @@ main { flex: 1; display: flex; min-height: 0; }
   pointer-events: none;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 0;
   box-shadow: var(--shadow);
   padding: 6px 10px;
   font-size: 12px;
@@ -369,7 +401,7 @@ main { flex: 1; display: flex; min-height: 0; }
 .p-chip {
   font-size: 11.5px;
   padding: 2px 9px;
-  border-radius: 999px;
+  border-radius: 0;
   background: var(--chip);
   color: var(--text);
 }
@@ -385,7 +417,7 @@ main { flex: 1; display: flex; min-height: 0; }
   margin: 10px 0;
   padding: 9px;
   border: 0;
-  border-radius: 999px;
+  border-radius: 0;
   background: var(--navy);
   color: var(--bg);
   font: inherit;
@@ -422,7 +454,7 @@ main { flex: 1; display: flex; min-height: 0; }
   position: relative;
   width: 64px;
   height: 64px;
-  border-radius: 8px;
+  border-radius: 0;
   overflow: hidden;
   background: var(--chip);
 }
@@ -435,7 +467,7 @@ main { flex: 1; display: flex; min-height: 0; }
   font-size: 9.5px;
   color: var(--text);
   background: rgba(8, 14, 17, .72);
-  border-top-left-radius: 6px;
+  border-top-left-radius: 0;
 }
 
 .p-section { margin: 14px 0 4px; }
@@ -465,7 +497,7 @@ main { flex: 1; display: flex; min-height: 0; }
   color: var(--accent);
   text-decoration: none;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 0;
   padding: 3px 10px;
 }
 .p-links a:hover { border-color: var(--accent); }
