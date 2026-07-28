@@ -315,27 +315,59 @@ main { flex: 1; display: flex; min-height: 0; }
   will-change: transform, opacity;
 }
 .fx-yeah {
-  color: var(--accent);
-  text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 70%, transparent);
-  animation: fx-burst 1s cubic-bezier(.2, .7, .3, 1) forwards;
+  font-weight: 700;
+  text-shadow: 0 0 18px currentColor, 0 2px 10px rgba(0, 0, 0, .5);
+  animation: fx-burst 2.2s cubic-bezier(.12, .85, .25, 1) forwards;
 }
 .fx-nah {
   color: var(--muted);
-  font-size: 17px;
-  animation: fx-sink 1.5s ease-out forwards;
+  font-size: 30px;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, .6);
+  animation: fx-sink 2.6s cubic-bezier(.25, .6, .3, 1) forwards;
+}
+/* Shockwaves off the node, so the hit reads even at the edge of vision. */
+.fx-ring {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2.5px solid var(--accent);
+  box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 55%, transparent);
+  animation: fx-ring 1.5s cubic-bezier(.1, .8, .2, 1) forwards;
+}
+.fx-ring-nah {
+  border-color: var(--muted);
+  border-style: dashed;
+  box-shadow: none;
+  animation: fx-ring-nah 1.8s ease-out forwards;
 }
 @keyframes fx-burst {
-  0% { transform: translate(-50%, -50%) scale(.4); opacity: 0; }
-  18% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+  0% { transform: translate(-50%, -50%) scale(.25) rotate(0deg); opacity: 0; }
+  10% { transform: translate(-50%, -50%) scale(1.45) rotate(0deg); opacity: 1; }
+  22% { transform: translate(-50%, -50%) scale(1) rotate(0deg); opacity: 1; }
+  /* fly out… */
+  65% {
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.1) rotate(var(--rot));
+    opacity: 1;
+  }
+  /* …then let gravity have them */
   100% {
-    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.85) rotate(var(--rot));
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy) + 90px)) scale(.9) rotate(var(--rot));
     opacity: 0;
   }
 }
 @keyframes fx-sink {
-  0% { transform: translate(-50%, -50%) scale(.85) rotate(0deg); opacity: 0; }
-  22% { transform: translate(-50%, -95%) scale(1) rotate(-3deg); opacity: .9; }
-  100% { transform: translate(-50%, -230%) scale(.9) rotate(-9deg); opacity: 0; }
+  0% { transform: translate(-50%, -50%) scale(.5) rotate(0deg); opacity: 0; }
+  14% { transform: translate(-50%, -75%) scale(1.15) rotate(-2deg); opacity: 1; }
+  55% { transform: translate(-50%, -165%) scale(1) rotate(-9deg); opacity: .85; }
+  100% { transform: translate(-50%, -235%) scale(.85) rotate(-18deg); opacity: 0; }
+}
+@keyframes fx-ring {
+  0% { transform: translate(-50%, -50%) scale(.15); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(11); opacity: 0; }
+}
+@keyframes fx-ring-nah {
+  0% { transform: translate(-50%, -50%) scale(.2); opacity: .55; }
+  100% { transform: translate(-50%, -50%) scale(3.4); opacity: 0; }
 }
 /* Someone who's asked for less motion still gets the words, just calmly. */
 @media (prefers-reduced-motion: reduce) {

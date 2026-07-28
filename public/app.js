@@ -528,30 +528,53 @@
   // still settling, so the reaction stays attached to what caused it.
   const fxLive = [];
 
+  function addFxPiece(n, cls, text, style = {}, vars = {}) {
+    const s = document.createElement('span');
+    s.className = `fx ${cls}`;
+    if (text) s.textContent = text;
+    Object.assign(s.style, style);
+    for (const [k, v] of Object.entries(vars)) s.style.setProperty(k, v);
+    el.stage.appendChild(s);
+    const piece = { s, n };
+    fxLive.push(piece);
+    s.addEventListener('animationend', () => {
+      s.remove();
+      const at = fxLive.indexOf(piece);
+      if (at >= 0) fxLive.splice(at, 1);
+    });
+    return s;
+  }
+
   function fireReaction(id, warm) {
     const n = cy.getElementById(id);
     if (n.empty() || !n.visible()) return;
-    const pieces = warm ? 7 : 1;
+
+    if (!warm) {
+      addFxPiece(n, 'fx-ring fx-ring-nah');
+      addFxPiece(n, 'fx-nah', 'Yeah nah');
+      positionReactions();
+      return;
+    }
+
+    // It's a game — so make a scene. Three shockwaves and a faceful of
+    // confetti, in the band hues rather than one flat colour.
+    for (let i = 0; i < 3; i++) {
+      addFxPiece(n, 'fx-ring', '', { animationDelay: `${i * 170}ms` });
+    }
+    const pieces = 16;
     for (let i = 0; i < pieces; i++) {
-      const s = document.createElement('span');
-      s.className = `fx ${warm ? 'fx-yeah' : 'fx-nah'}`;
-      s.textContent = warm ? 'Oh yeah!' : 'Yeah nah';
-      if (warm) {
-        const ang = (i / pieces) * Math.PI * 2 + Math.random() * 0.5;
-        const reach = 80 + Math.random() * 70;
-        s.style.setProperty('--dx', `${Math.cos(ang) * reach}px`);
-        s.style.setProperty('--dy', `${Math.sin(ang) * reach}px`);
-        s.style.setProperty('--rot', `${(Math.random() - 0.5) * 40}deg`);
-        s.style.fontSize = `${13 + Math.random() * 8}px`;
-        s.style.animationDelay = `${i * 45}ms`;
-      }
-      el.stage.appendChild(s);
-      const piece = { s, n };
-      fxLive.push(piece);
-      s.addEventListener('animationend', () => {
-        s.remove();
-        const at = fxLive.indexOf(piece);
-        if (at >= 0) fxLive.splice(at, 1);
+      // Spread evenly with jitter so it scatters rather than forming a wheel.
+      const ang = ((i + Math.random() * 0.7) / pieces) * Math.PI * 2;
+      const reach = 130 + Math.random() * 190;
+      const hue = i % 3 === 0 ? '#ffffff' : HUB_HUES[i % HUB_HUES.length];
+      addFxPiece(n, 'fx-yeah', 'Oh yeah!', {
+        color: hue,
+        fontSize: `${16 + Math.random() * 22}px`,
+        animationDelay: `${Math.random() * 620}ms`,
+      }, {
+        '--dx': `${Math.cos(ang) * reach}px`,
+        '--dy': `${Math.sin(ang) * reach}px`,
+        '--rot': `${(Math.random() - 0.5) * 90}deg`,
       });
     }
     positionReactions();
