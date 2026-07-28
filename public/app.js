@@ -515,8 +515,10 @@
   let degTarget = null; // the true distance, once MusicBrainz has been asked
   let degChain = null; // and the chain behind it, held back until you give up
   let degMiss = null; // a search that came back empty: {exhausted, atLeast, searched}
-  let degDepth = 26; // lookups the next search may spend
+  let degDepth = 34; // lookups the next search may spend
   let degJustExpanded = null; // the node you opened most recently
+  let degLinksSeen = 0; // links of the known route you'd uncovered last time
+  let degAuto = false; // whether the background route search has been kicked off
 
   // Hot or cold on the last thing you opened. Once the true chain is known
   // we can be specific without giving the answer away; before that, the only
@@ -617,6 +619,7 @@
       fireReaction(id, warm);
       return;
     }
+    let neutral = false;
     if (degChain) {
       const onChain = degChain.some((s) => s.id === id);
       // Progress means LINKS you've uncovered, not nodes you can see. All
@@ -629,12 +632,24 @@
         if (u.nonempty() && v.nonempty() && u.edgesWith(v).length) links++;
       }
       const total = degChain.length - 1;
-      msg = onChain
-        ? `Oh yeah — ${name} is on the path (${links} of ${total} links found)`
-        : `Yeah nah — ${name} isn't on it (${links} of ${total} links found)`;
-      warm = onChain;
+      // Uncovering a link counts even when the node isn't on the one route
+      // we happen to hold — there are usually several equally short ways
+      // through, and condemning a good move is worse than being generous.
+      const gained = links > degLinksSeen;
+      degLinksSeen = links;
+      warm = onChain || gained;
+      msg = warm
+        ? `Oh yeah — ${name} is on the route (${links} of ${total} links found)`
+        : `Yeah nah — ${name} isn't on the route I found (${links} of ${total})`;
     } else {
-      msg = `Yeah nah — ${name} didn't join them up`;
+      // We don't know the answer yet, so we can't call that a wrong turn.
+      // Saying "yeah nah" here told you Brooks Wackerman was a dud when he
+      // was on the way. Go and find the real distance instead.
+      neutral = true;
+      msg = degMiss
+        ? 'Still not linked — Search deeper to unlock hot/cold hints'
+        : 'Still not linked — working out how far apart they are…';
+      maybeAutoRoute();
     }
     el.degWarm.textContent = msg;
     el.degWarm.classList.toggle('warm', warm);
@@ -642,7 +657,7 @@
     // Mirror it to the status pill — the card may be minimised, or your eyes
     // may be on the graph rather than on it.
     setStatus(msg, false, 3500);
-    fireReaction(id, warm);
+    if (!neutral) fireReaction(id, warm);
   }
 
   let degPos = null; // where you dragged it to, if you did
@@ -758,7 +773,7 @@
       degTarget = null;
       degChain = null;
       degMiss = null;
-      degDepth = 26;
+      degDepth = 34;
       return;
     }
     let a = el.degA.value;
@@ -881,12 +896,23 @@
   }
 
   // Ask MusicBrainz how far apart they actually are — that's the target.
-  el.degFind.addEventListener('click', async () => {
+  // The first time you play a move on an unlinked pair, go and learn the real
+  // answer in the background — without it the game can only tell you whether
+  // you finished, not whether you're getting warmer.
+  function maybeAutoRoute() {
+    if (degChain || degMiss || degAuto) return;
+    degAuto = true;
+    runRouteSearch(true);
+  }
+
+  async function runRouteSearch(auto) {
     const a = cy.getElementById(el.degA.value);
     const b = cy.getElementById(el.degB.value);
     if (a.empty() || b.empty()) return;
-    el.degFind.disabled = true;
-    el.degFind.textContent = 'Searching…';
+    if (!auto) {
+      el.degFind.disabled = true;
+      el.degFind.textContent = 'Searching…';
+    }
     // Deep searches are slow enough (1 lookup/sec at MusicBrainz) that saying
     // so up front is kinder than a spinner that looks stuck.
     setStatus(`Searching MusicBrainz for a link between ${a.data('name')} and `
@@ -913,9 +939,12 @@
       setStatus(`Route search failed: ${err.message}`, true, 5000);
     } finally {
       el.degFind.disabled = false;
+      degLinksSeen = 0;
       computeDegrees();
     }
-  });
+  }
+
+  el.degFind.addEventListener('click', () => runRouteSearch(false));
 
   // Give up: walk the answer onto the canvas, hop by hop.
   el.degReveal.addEventListener('click', async () => {
@@ -939,8 +968,10 @@
     degTarget = null; // a new pairing is a new puzzle
     degChain = null;
     degMiss = null;
-    degDepth = 26;
+    degDepth = 34;
     degJustExpanded = null;
+    degLinksSeen = 0;
+    degAuto = false;
     el.degWarm.hidden = true;
     computeDegrees();
   };

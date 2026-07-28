@@ -271,7 +271,7 @@ async function apiRoute(req, res, url) {
   }
   if (from === to) return sendJson(res, 200, { found: true, distance: 0, path: [] });
 
-  const BUDGET = Math.min(60, Math.max(5, Number(url.searchParams.get('budget')) || 26));
+  const BUDGET = Math.min(60, Math.max(5, Number(url.searchParams.get('budget')) || 34));
   const seen = { f: new Map([[from, null]]), b: new Map([[to, null]]) };
   const names = new Map();
   let frontF = [from];
