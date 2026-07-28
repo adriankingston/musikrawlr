@@ -105,15 +105,23 @@
 
     <!-- The game itself, floating on the canvas between its two artists. -->
     <div id="degrees" hidden>
-      <div class="deg-picks">
-        <select id="deg-a" aria-label="Connect from"></select>
-        <span class="deg-arrow" aria-hidden="true">↔</span>
-        <select id="deg-b" aria-label="Connect to"></select>
+      <div class="deg-bar" id="deg-bar" title="Drag to move · double-click to re-centre">
+        <span class="deg-grip" aria-hidden="true">⠿</span>
+        <span class="deg-label" id="deg-label">Six degrees</span>
+        <button id="deg-min" class="deg-x" title="Minimise" aria-label="Minimise">–</button>
       </div>
-      <div id="deg-result" class="deg-result"></div>
-      <div class="deg-actions">
-        <button id="deg-find" class="deg-btn" hidden>Find the link</button>
-        <button id="deg-reveal" class="deg-btn" hidden>Reveal it</button>
+      <div class="deg-body">
+        <div class="deg-picks">
+          <select id="deg-a" aria-label="Connect from"></select>
+          <span class="deg-arrow" aria-hidden="true">↔</span>
+          <select id="deg-b" aria-label="Connect to"></select>
+        </div>
+        <div id="deg-result" class="deg-result"></div>
+        <div id="deg-warm" class="deg-warm" hidden></div>
+        <div class="deg-actions">
+          <button id="deg-find" class="deg-btn" hidden>Find the link</button>
+          <button id="deg-reveal" class="deg-btn" hidden>Reveal it</button>
+        </div>
       </div>
     </div>
 

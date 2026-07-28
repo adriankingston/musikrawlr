@@ -10,6 +10,8 @@
     relfilter: $('#relfilter'), relList: $('#rel-list'), relState: $('#rel-state'),
     degrees: $('#degrees'), degA: $('#deg-a'), degB: $('#deg-b'),
     degResult: $('#deg-result'), degFind: $('#deg-find'), degReveal: $('#deg-reveal'),
+    degBar: $('#deg-bar'), degLabel: $('#deg-label'), degMin: $('#deg-min'),
+    degWarm: $('#deg-warm'),
     tbYear: $('#hud-year'), tbRange: $('#tb-range'), tbHist: $('#tb-hist'), tbAll: $('#tb-all'),
   };
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -512,23 +514,103 @@
   let degChain = null; // and the chain behind it, held back until you give up
   let degMiss = null; // a search that came back empty: {exhausted, atLeast, searched}
   let degDepth = 26; // lookups the next search may spend
+  let degJustExpanded = null; // the node you opened most recently
+
+  // Hot or cold on the last thing you opened. Once the true chain is known
+  // we can be specific without giving the answer away; before that, the only
+  // honest signal is whether the two sides met.
+  function showWarmth(connected) {
+    const id = degJustExpanded;
+    degJustExpanded = null;
+    if (!id || connected) { el.degWarm.hidden = true; return; }
+    const n = cy.getElementById(id);
+    if (n.empty()) { el.degWarm.hidden = true; return; }
+    const name = n.data('name');
+    let warm = false;
+    let msg;
+    if (degChain) {
+      const onChain = degChain.some((s) => s.id === id);
+      // Progress means LINKS you've uncovered, not nodes you can see. All
+      // five names can be on the canvas while the chain is still broken —
+      // a node you haven't expanded brings no edges with it.
+      let links = 0;
+      for (let i = 0; i < degChain.length - 1; i++) {
+        const u = cy.getElementById(degChain[i].id);
+        const v = cy.getElementById(degChain[i + 1].id);
+        if (u.nonempty() && v.nonempty() && u.edgesWith(v).length) links++;
+      }
+      const total = degChain.length - 1;
+      msg = onChain
+        ? `Oh yeah — ${name} is on the path (${links} of ${total} links found)`
+        : `Yeah nah — ${name} isn't on it (${links} of ${total} links found)`;
+      warm = onChain;
+    } else {
+      msg = `Yeah nah — ${name} didn't join them up`;
+    }
+    el.degWarm.textContent = msg;
+    el.degWarm.classList.toggle('warm', warm);
+    el.degWarm.hidden = false;
+  }
+
+  let degPos = null; // where you dragged it to, if you did
 
   // Park the card on the midpoint between its two artists, so the game reads
-  // as being about those two nodes rather than about a panel somewhere else.
+  // as being about those two nodes — unless you've moved it out of the way,
+  // in which case it stays put.
   function placeDegCard() {
     if (el.degrees.hidden) return;
-    const a = cy.getElementById(el.degA.value);
-    const b = cy.getElementById(el.degB.value);
-    if (a.empty() || b.empty()) return;
-    const pa = a.renderedPosition();
-    const pb = b.renderedPosition();
     const w = el.stage.clientWidth;
     const h = el.stage.clientHeight;
-    const x = Math.max(140, Math.min((pa.x + pb.x) / 2, w - 140));
-    const y = Math.max(70, Math.min((pa.y + pb.y) / 2, h - 20));
-    el.degrees.style.left = `${x}px`;
-    el.degrees.style.top = `${y}px`;
+    let x;
+    let y;
+    if (degPos) {
+      ({ x, y } = degPos);
+    } else {
+      const a = cy.getElementById(el.degA.value);
+      const b = cy.getElementById(el.degB.value);
+      if (a.empty() || b.empty()) return;
+      const pa = a.renderedPosition();
+      const pb = b.renderedPosition();
+      x = (pa.x + pb.x) / 2;
+      y = (pa.y + pb.y) / 2;
+    }
+    el.degrees.style.left = `${Math.max(140, Math.min(x, w - 140))}px`;
+    el.degrees.style.top = `${Math.max(70, Math.min(y, h - 20))}px`;
   }
+
+  // ---- move it out of the way ----
+  let degDrag = null;
+  el.degBar.addEventListener('mousedown', (e) => {
+    if (e.target.closest('button')) return;
+    const r = el.degrees.getBoundingClientRect();
+    degDrag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!degDrag) return;
+    const s = el.stage.getBoundingClientRect();
+    // left/top address the anchor point, and the card is offset from it by
+    // its centring margins — so convert the pointer back to that anchor.
+    degPos = {
+      x: e.clientX - s.left - degDrag.dx + 130,
+      y: e.clientY - s.top - degDrag.dy + 46,
+    };
+    el.degrees.classList.add('moved');
+    placeDegCard();
+  });
+  document.addEventListener('mouseup', () => { degDrag = null; });
+  // Double-click the bar to send it back between the two artists.
+  el.degBar.addEventListener('dblclick', () => {
+    degPos = null;
+    el.degrees.classList.remove('moved');
+    placeDegCard();
+  });
+
+  el.degMin.addEventListener('click', () => {
+    const mini = el.degrees.classList.toggle('mini');
+    el.degMin.textContent = mini ? '+' : '–';
+    el.degMin.title = mini ? 'Expand' : 'Minimise';
+  });
 
   function optionsFor(sel, keep) {
     const nodes = cy.nodes(':visible').sort((a, b) =>
@@ -584,6 +666,7 @@
       el.degResult.innerHTML = '<span class="pe-hint">Pick two different artists.</span>';
       el.degFind.hidden = true;
       el.degReveal.hidden = true;
+      el.degWarm.hidden = true;
       degPrev = null;
       placeDegCard();
       return;
@@ -626,7 +709,9 @@
         el.degFind.textContent = 'Find the link';
       }
       el.degReveal.hidden = !degChain;
+      if (opts.announce) showWarmth(false);
       degPrev = Infinity;
+      updateDegLabel();
       placeDegCard();
       return;
     }
@@ -641,6 +726,7 @@
       + ` apart<div class="deg-chain">${chain}</div>`;
     el.degFind.hidden = true;
     el.degReveal.hidden = true;
+    if (opts.announce) showWarmth(true);
 
     // Celebrate only when the GRAPH closed the gap. Switching the dropdown
     // from an unconnected pair to a connected one isn't a discovery.
@@ -650,7 +736,19 @@
       queueGlow();
     }
     degPrev = dist;
+    updateDegLabel();
     placeDegCard();
+  }
+
+  // The bar doubles as the readout when the card is rolled up.
+  function updateDegLabel() {
+    let state = '';
+    if (Number.isFinite(degPrev)) state = `${degPrev} step${degPrev === 1 ? '' : 's'}`;
+    else if (degTarget != null) state = `${degTarget} to find`;
+    else if (degMiss && degMiss.exhausted) state = 'no link';
+    else if (degMiss) state = `${degMiss.atLeast}+ apart`;
+    else state = 'not linked';
+    el.degLabel.textContent = `Six degrees · ${state}`;
   }
 
   // Ask MusicBrainz how far apart they actually are — that's the target.
@@ -713,6 +811,8 @@
     degChain = null;
     degMiss = null;
     degDepth = 26;
+    degJustExpanded = null;
+    el.degWarm.hidden = true;
     computeDegrees();
   };
   el.degA.addEventListener('change', degPick);
@@ -852,6 +952,7 @@
     try {
       const a = await api('/api/artist?id=' + id);
       expanded.add(id);
+      degJustExpanded = id; // so the game can say whether that helped
       const added = addArtist(a);
       setStatus(`${a.name}: ${added} connection${added === 1 ? '' : 's'} added`, false, 2600);
       const sel = cy.$('node:selected');
