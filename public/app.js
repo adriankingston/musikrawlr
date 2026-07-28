@@ -579,15 +579,39 @@
   }
 
   // ---- move it out of the way ----
+  // Pointer events so this works the same under a mouse, a finger or a pen;
+  // capturing the pointer keeps the drag alive when it leaves the bar.
   let degDrag = null;
-  el.degBar.addEventListener('mousedown', (e) => {
+  let degBarTap = 0;
+
+  function recentreCard() {
+    degPos = null;
+    el.degrees.classList.remove('moved');
+    placeDegCard();
+  }
+
+  el.degBar.addEventListener('pointerdown', (e) => {
     if (e.target.closest('button')) return;
     const r = el.degrees.getBoundingClientRect();
-    degDrag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    degDrag = {
+      id: e.pointerId,
+      dx: e.clientX - r.left,
+      dy: e.clientY - r.top,
+      startX: e.clientX,
+      startY: e.clientY,
+      moved: false,
+    };
+    try { el.degBar.setPointerCapture(e.pointerId); } catch { /* capture unsupported */ }
     e.preventDefault();
   });
-  document.addEventListener('mousemove', (e) => {
-    if (!degDrag) return;
+
+  el.degBar.addEventListener('pointermove', (e) => {
+    if (!degDrag || e.pointerId !== degDrag.id) return;
+    // A finger never holds perfectly still, so ignore the first few pixels —
+    // otherwise every tap would register as a drag and kill the double-tap.
+    if (!degDrag.moved
+      && Math.hypot(e.clientX - degDrag.startX, e.clientY - degDrag.startY) < 5) return;
+    degDrag.moved = true;
     const s = el.stage.getBoundingClientRect();
     // left/top address the anchor point, and the card is offset from it by
     // its centring margins — so convert the pointer back to that anchor.
@@ -598,12 +622,23 @@
     el.degrees.classList.add('moved');
     placeDegCard();
   });
-  document.addEventListener('mouseup', () => { degDrag = null; });
-  // Double-click the bar to send it back between the two artists.
-  el.degBar.addEventListener('dblclick', () => {
-    degPos = null;
-    el.degrees.classList.remove('moved');
-    placeDegCard();
+
+  function endDegDrag(e) {
+    if (!degDrag || e.pointerId !== degDrag.id) return;
+    try { el.degBar.releasePointerCapture(degDrag.id); } catch { /* already gone */ }
+    const wasDrag = degDrag.moved;
+    degDrag = null;
+    if (wasDrag || e.target.closest('button')) return;
+    // A tap that didn't move: double-tap the bar to send the card home.
+    const now = Date.now();
+    if (now - degBarTap < 400) { recentreCard(); degBarTap = 0; } else { degBarTap = now; }
+  }
+  el.degBar.addEventListener('pointerup', endDegDrag);
+  el.degBar.addEventListener('pointercancel', endDegDrag);
+  // Native dblclick as well: touch relies on the tap timing above, but a
+  // mouse shouldn't have to depend on my window being generous enough.
+  el.degBar.addEventListener('dblclick', (e) => {
+    if (!e.target.closest('button')) recentreCard();
   });
 
   el.degMin.addEventListener('click', () => {
@@ -1504,7 +1539,9 @@
     }
   });
 
-  el.results.addEventListener('mousedown', (e) => {
+  // pointerdown, not mousedown: on touch the synthesised mouse event arrives
+  // late (and only after the browser has decided it wasn't a scroll).
+  el.results.addEventListener('pointerdown', (e) => {
     const b = e.target.closest('.r-item');
     const pick = b && currentResults[+b.dataset.i];
     if (pick) { e.preventDefault(); addSeed(pick); }
