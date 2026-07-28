@@ -271,13 +271,17 @@ async function apiRoute(req, res, url) {
   }
   if (from === to) return sendJson(res, 200, { found: true, distance: 0, path: [] });
 
-  const BUDGET = Math.min(40, Math.max(5, Number(url.searchParams.get('budget')) || 26));
+  const BUDGET = Math.min(60, Math.max(5, Number(url.searchParams.get('budget')) || 26));
   const seen = { f: new Map([[from, null]]), b: new Map([[to, null]]) };
   const names = new Map();
   let frontF = [from];
   let frontB = [to];
   let fetches = 0;
   let meet = null;
+  // Levels fully explored on each side. Only complete levels count, so the
+  // "at least N steps" we report back is a bound we can actually stand behind.
+  let doneF = 0;
+  let doneB = 0;
 
   const neighbours = async (id) => {
     fetches++;
@@ -299,8 +303,9 @@ async function apiRoute(req, res, url) {
     const mine = fwd ? seen.f : seen.b;
     const theirs = fwd ? seen.b : seen.f;
     const next = [];
+    let complete = true;
     for (const id of front) {
-      if (fetches >= BUDGET) break;
+      if (fetches >= BUDGET) { complete = false; break; }
       let nb;
       try { nb = await neighbours(id); } catch { continue; }
       for (const other of nb) {
@@ -311,10 +316,23 @@ async function apiRoute(req, res, url) {
       }
       if (meet) break;
     }
-    if (fwd) frontF = next; else frontB = next;
+    if (fwd) { frontF = next; if (complete && !meet) doneF++; }
+    else { frontB = next; if (complete && !meet) doneB++; }
   }
 
-  if (!meet) return sendJson(res, 200, { found: false, searched: fetches, budget: BUDGET });
+  if (!meet) {
+    // A frontier running dry means we walked that artist's ENTIRE connected
+    // corner of MusicBrainz without meeting the other — a real "no link",
+    // not merely a search that ran out of road.
+    const exhausted = frontF.length === 0 || frontB.length === 0;
+    return sendJson(res, 200, {
+      found: false,
+      exhausted,
+      atLeast: doneF + doneB + 1,
+      searched: fetches,
+      budget: BUDGET,
+    });
+  }
 
   const chain = [];
   for (let id = meet; id != null; id = seen.f.get(id)) chain.unshift(id);

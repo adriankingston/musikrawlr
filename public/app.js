@@ -510,6 +510,8 @@
   let degUserPicked = false; // once a pair is in play, stop re-aiming at new hubs
   let degTarget = null; // the true distance, once MusicBrainz has been asked
   let degChain = null; // and the chain behind it, held back until you give up
+  let degMiss = null; // a search that came back empty: {exhausted, atLeast, searched}
+  let degDepth = 26; // lookups the next search may spend
 
   // Park the card on the midpoint between its two artists, so the game reads
   // as being about those two nodes rather than about a panel somewhere else.
@@ -545,6 +547,8 @@
       degPrev = null;
       degTarget = null;
       degChain = null;
+      degMiss = null;
+      degDepth = 26;
       return;
     }
     let a = el.degA.value;
@@ -590,13 +594,37 @@
     if (!Number.isFinite(dist)) {
       // Not linked in what you've uncovered. Once MusicBrainz has told us how
       // far apart they really are, that number becomes the target to chase.
-      el.degResult.innerHTML = degTarget
-        ? `<span class="deg-hit">${degTarget} step${degTarget === 1 ? '' : 's'}</span>`
+      if (degTarget != null) {
+        el.degResult.innerHTML = `<span class="deg-hit">${degTarget} step${degTarget === 1 ? '' : 's'}</span>`
           + ' apart — go find them<div class="deg-chain">Expand members and bands'
-          + ' until the two sides meet.</div>'
-        : '<span class="pe-hint">Not linked yet — expand to connect them, or ask'
-          + ' how far apart they really are.</span>';
-      el.degFind.hidden = degTarget != null;
+          + ' until the two sides meet.</div>';
+        el.degFind.hidden = true;
+      } else if (degMiss && degMiss.exhausted) {
+        // A definite answer, and the honest one: no chain exists.
+        el.degResult.innerHTML = '<span class="deg-none">No connection at all.</span>'
+          + '<div class="deg-chain">Nobody has ever played in both camps — these two'
+          + ' sit in separate corners of MusicBrainz.</div>';
+        el.degFind.hidden = true;
+      } else if (degMiss && degMiss.budget >= 60) {
+        // We've dug as deep as the rate limit sensibly allows. State the bound
+        // and stop dangling a button that can't do better.
+        el.degResult.innerHTML = `<span class="deg-hit">${degMiss.atLeast}+ steps</span>`
+          + ' apart at least<div class="deg-chain">Searched as far as we go and found'
+          + ' nothing. If they connect, it\'s a long way round — try it by hand.</div>';
+        el.degFind.hidden = true;
+      } else if (degMiss) {
+        // Not an answer, so don't dress it up as one.
+        el.degResult.innerHTML = `<span class="deg-hit">${degMiss.atLeast}+ steps</span>`
+          + ` apart at least<div class="deg-chain">Nothing found in ${degMiss.searched}`
+          + ' lookups — they may be linked further out, or not at all.</div>';
+        el.degFind.hidden = false;
+        el.degFind.textContent = 'Search deeper';
+      } else {
+        el.degResult.innerHTML = '<span class="pe-hint">Not linked yet — expand to connect'
+          + ' them, or ask how far apart they really are.</span>';
+        el.degFind.hidden = false;
+        el.degFind.textContent = 'Find the link';
+      }
       el.degReveal.hidden = !degChain;
       degPrev = Infinity;
       placeDegCard();
@@ -632,21 +660,32 @@
     if (a.empty() || b.empty()) return;
     el.degFind.disabled = true;
     el.degFind.textContent = 'Searching…';
-    setStatus(`Looking for a link between ${a.data('name')} and ${b.data('name')}…`);
+    // Deep searches are slow enough (1 lookup/sec at MusicBrainz) that saying
+    // so up front is kinder than a spinner that looks stuck.
+    setStatus(`Searching MusicBrainz for a link between ${a.data('name')} and `
+      + `${b.data('name')} — up to ${degDepth} lookups, this can take a minute…`);
     try {
-      const d = await api(`/api/route?from=${a.id()}&to=${b.id()}`);
+      const d = await api(`/api/route?from=${a.id()}&to=${b.id()}&budget=${degDepth}`);
       if (d.found) {
         degTarget = d.distance;
         degChain = d.path;
+        degMiss = null;
         setStatus(`They're ${d.distance} steps apart — go find it`, false, 6000);
       } else {
-        setStatus(`No link found in ${d.searched} lookups — they may be far apart`, true, 6000);
+        degMiss = {
+          exhausted: !!d.exhausted, atLeast: d.atLeast, searched: d.searched, budget: d.budget,
+        };
+        // Only offer a deeper dig when there's actually more ground to cover.
+        degDepth = d.exhausted ? degDepth : Math.min(60, degDepth + 24);
+        setStatus(d.exhausted
+          ? 'No connection exists between them'
+          : `No link within ${d.searched} lookups — at least ${d.atLeast} steps apart`,
+        !d.exhausted, 7000);
       }
     } catch (err) {
       setStatus(`Route search failed: ${err.message}`, true, 5000);
     } finally {
       el.degFind.disabled = false;
-      el.degFind.textContent = 'Find the link';
       computeDegrees();
     }
   });
@@ -672,6 +711,8 @@
     degPrev = null;
     degTarget = null; // a new pairing is a new puzzle
     degChain = null;
+    degMiss = null;
+    degDepth = 26;
     computeDegrees();
   };
   el.degA.addEventListener('change', degPick);

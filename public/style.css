@@ -359,6 +359,7 @@ main { flex: 1; display: flex; min-height: 0; }
 .deg-arrow { flex: none; color: var(--muted); }
 .deg-result { margin-top: 8px; font-size: 12px; color: var(--muted); }
 .deg-hit { color: var(--accent); font-weight: 700; }
+.deg-none { color: var(--warn); font-weight: 700; }
 .deg-chain { margin-top: 5px; line-height: 1.5; color: var(--text); }
 .deg-chain button {
   border: 0;
