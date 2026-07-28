@@ -603,7 +603,13 @@
 
     // Already linked? Then the question is whether that opened a shortcut.
     if (connected) {
-      if (!Number.isFinite(before) || before == null) {
+      if (before == null) {
+        // First reading of this pairing — they start out linked, nothing was
+        // achieved. Report it, but don't throw a party over it.
+        el.degWarm.hidden = true;
+        return;
+      }
+      if (before === Infinity) {
         msg = `Oh yeah — ${name} joined them up: ${dist} step${dist === 1 ? '' : 's'}`;
         warm = true;
       } else if (dist < before) {
@@ -955,7 +961,7 @@
     el.degReveal.textContent = 'Revealing…';
     for (const step of chain.slice(1, -1)) {
       ensureNode({ id: step.id, name: step.name, type: step.type });
-      await expand(step.id);
+      await expand(step.id, { silent: true });
     }
     el.degReveal.disabled = false;
     el.degReveal.textContent = 'Reveal it';
@@ -1102,7 +1108,7 @@
     }, dur + 140);
   }
 
-  async function expand(id) {
+  async function expand(id, opts = {}) {
     if (expanded.has(id) || loading.has(id)) return;
     loading.add(id);
     const n0 = cy.getElementById(id);
@@ -1112,7 +1118,9 @@
     try {
       const a = await api('/api/artist?id=' + id);
       expanded.add(id);
-      degJustExpanded = id; // so the game can say whether that helped
+      // Only a move you played counts. Seeding a band or revealing the answer
+      // isn't a guess, so it shouldn't be cheered.
+      if (!opts.silent) degJustExpanded = id;
       const added = addArtist(a);
       setStatus(`${a.name}: ${added} connection${added === 1 ? '' : 's'} added`, false, 2600);
       const sel = cy.$('node:selected');
@@ -1694,7 +1702,7 @@
       cy.animate({ center: { eles: n } }, { duration: 250 });
       return;
     }
-    expand(a.id);
+    expand(a.id, { silent: true });
   }
 
   async function seedByName(name) {
