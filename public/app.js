@@ -519,6 +519,8 @@
   let degJustExpanded = null; // the node you opened most recently
   let degLinksSeen = 0; // links of the known route you'd uncovered last time
   let degAuto = false; // whether the background route search has been kicked off
+  let degRevealing = false; // the reveal walk shouldn't drag the ends around
+  let degAimAt = null; // an artist you just searched out, to aim the game at
 
   // Hot or cold on the last thing you opened. Once the true chain is known
   // we can be specific without giving the answer away; before that, the only
@@ -591,6 +593,18 @@
     }
   }
 
+  // Links of the known route that are actually joined up on the canvas.
+  function chainLinksFound() {
+    if (!degChain) return 0;
+    let links = 0;
+    for (let i = 0; i < degChain.length - 1; i++) {
+      const u = cy.getElementById(degChain[i].id);
+      const v = cy.getElementById(degChain[i + 1].id);
+      if (u.nonempty() && v.nonempty() && u.edgesWith(v).length) links++;
+    }
+    return links;
+  }
+
   function showWarmth(connected, dist, before) {
     const id = degJustExpanded;
     degJustExpanded = null;
@@ -628,25 +642,23 @@
     let neutral = false;
     if (degChain) {
       const onChain = degChain.some((s) => s.id === id);
-      // Progress means LINKS you've uncovered, not nodes you can see. All
-      // five names can be on the canvas while the chain is still broken —
-      // a node you haven't expanded brings no edges with it.
-      let links = 0;
-      for (let i = 0; i < degChain.length - 1; i++) {
-        const u = cy.getElementById(degChain[i].id);
-        const v = cy.getElementById(degChain[i + 1].id);
-        if (u.nonempty() && v.nonempty() && u.edgesWith(v).length) links++;
-      }
+      const links = chainLinksFound();
       const total = degChain.length - 1;
       // Uncovering a link counts even when the node isn't on the one route
       // we happen to hold — there are usually several equally short ways
-      // through, and condemning a good move is worse than being generous.
+      // through. But it must be a link YOU just uncovered: the baseline is
+      // set when the route arrives, or the links that were already sitting
+      // there get credited to whatever you happened to click next.
       const gained = links > degLinksSeen;
       degLinksSeen = links;
       warm = onChain || gained;
-      msg = warm
-        ? `Oh yeah — ${name} is on the route (${links} of ${total} links found)`
-        : `Yeah nah — ${name} isn't on the route I found (${links} of ${total})`;
+      if (onChain) {
+        msg = `Oh yeah — ${name} is on the route (${links} of ${total} links found)`;
+      } else if (gained) {
+        msg = `Oh yeah — that opened up a link (${links} of ${total} found)`;
+      } else {
+        msg = `Yeah nah — ${name} isn't on the route I found (${links} of ${total})`;
+      }
     } else {
       // We don't know the answer yet, so we can't call that a wrong turn.
       // Saying "yeah nah" here told you Brooks Wackerman was a dud when he
@@ -788,15 +800,16 @@
     if (degUserPicked && (cy.getElementById(a).empty() || cy.getElementById(b).empty())) {
       degUserPicked = false;
     }
-    // The game aims itself at the first two things you open — then STAYS
-    // there. Re-aiming on every expansion would drag the target onto
-    // whatever you just opened, including the hops a reveal walks in.
+    // Searching out a band is a deliberate "put this in the game", so it
+    // becomes the far end. Expanding is a MOVE and must never shift the
+    // goalposts — otherwise the target lands on whatever you just opened and
+    // every click trivially "connects".
     if (!degUserPicked) {
-      const hubs = [...expanded].filter((id) => cy.getElementById(id).nonempty());
-      if (hubs.length > 1) {
-        a = hubs[0];
-        b = hubs[hubs.length - 1];
-        degUserPicked = true;
+      if (degAimAt && cy.getElementById(degAimAt).nonempty()) {
+        const others = [...expanded].filter((id) => id !== degAimAt && cy.getElementById(id).nonempty());
+        if (others.length) a = others[0];
+        b = degAimAt;
+        degAimAt = null;
       } else {
         a = a || nodes[0].id();
         b = b || nodes[nodes.length - 1].id();
@@ -929,6 +942,9 @@
         degTarget = d.distance;
         degChain = d.path;
         degMiss = null;
+        // Whatever of the route is already joined up is the starting line —
+        // not something the next click gets the credit for.
+        degLinksSeen = chainLinksFound();
         setStatus(`They're ${d.distance} steps apart — go find it`, false, 6000);
       } else {
         degMiss = {
@@ -945,7 +961,6 @@
       setStatus(`Route search failed: ${err.message}`, true, 5000);
     } finally {
       el.degFind.disabled = false;
-      degLinksSeen = 0;
       computeDegrees();
     }
   }
@@ -957,12 +972,14 @@
     if (!degChain) return;
     const chain = degChain;
     degChain = null;
+    degRevealing = true;
     el.degReveal.disabled = true;
     el.degReveal.textContent = 'Revealing…';
     for (const step of chain.slice(1, -1)) {
       ensureNode({ id: step.id, name: step.name, type: step.type });
       await expand(step.id, { silent: true });
     }
+    degRevealing = false;
     el.degReveal.disabled = false;
     el.degReveal.textContent = 'Reveal it';
     computeDegrees();
@@ -1692,6 +1709,14 @@
       renderedPosition: { x: el.stage.clientWidth / 2, y: el.stage.clientHeight / 2 },
     });
     n.addClass('seed');
+    if (!degUserPicked && !degRevealing) {
+      degAimAt = a.id; // you went looking for this one — make it the target
+      degAuto = false; // a new pairing deserves its own route search
+      degMiss = null;
+      degChain = null;
+      degTarget = null;
+      degLinksSeen = 0;
+    }
     updateOverlays();
     cy.$(':selected').unselect();
     n.select();
