@@ -101,21 +101,20 @@
         <div class="hud-body rel-body" id="rel-list"></div>
       </section>
 
-      <section id="degrees" class="hud-box" hidden>
-        <button class="hud-head" data-hud="deg" aria-expanded="true">
-          <span class="hud-title">Six degrees</span>
-          <span class="hud-state" id="deg-state"></span>
-          <span class="hud-caret" aria-hidden="true">▾</span>
-        </button>
-        <div class="hud-body deg-body">
-          <div class="deg-picks">
-            <select id="deg-a" aria-label="Connect from"></select>
-            <span class="deg-arrow" aria-hidden="true">→</span>
-            <select id="deg-b" aria-label="Connect to"></select>
-          </div>
-          <div id="deg-result" class="deg-result"></div>
-        </div>
-      </section>
+    </div>
+
+    <!-- The game itself, floating on the canvas between its two artists. -->
+    <div id="degrees" hidden>
+      <div class="deg-picks">
+        <select id="deg-a" aria-label="Connect from"></select>
+        <span class="deg-arrow" aria-hidden="true">↔</span>
+        <select id="deg-b" aria-label="Connect to"></select>
+      </div>
+      <div id="deg-result" class="deg-result"></div>
+      <div class="deg-actions">
+        <button id="deg-find" class="deg-btn" hidden>Find the link</button>
+        <button id="deg-reveal" class="deg-btn" hidden>Reveal it</button>
+      </div>
     </div>
 
     <div id="status" hidden></div>

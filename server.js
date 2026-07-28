@@ -258,11 +258,81 @@ async function apiNotability(req, res, url) {
   sendJson(res, 200, { sitelinks: Object.fromEntries(ids.map((id) => [id, store[id] || 0])) });
 }
 
+// Is there a chain between two artists, and how long? Bidirectional BFS over
+// MusicBrainz relationships, always growing the smaller side so the two
+// searches meet in the middle. Every lookup is the same cached artist fetch
+// the graph uses, so a second run over familiar ground is instant — but a
+// cold search is rate-limited to 1/sec, hence the hard budget.
+async function apiRoute(req, res, url) {
+  const from = (url.searchParams.get('from') || '').trim();
+  const to = (url.searchParams.get('to') || '').trim();
+  if (!MBID_RE.test(from) || !MBID_RE.test(to)) {
+    return sendJson(res, 400, { error: 'Invalid MBID' });
+  }
+  if (from === to) return sendJson(res, 200, { found: true, distance: 0, path: [] });
+
+  const BUDGET = Math.min(40, Math.max(5, Number(url.searchParams.get('budget')) || 26));
+  const seen = { f: new Map([[from, null]]), b: new Map([[to, null]]) };
+  const names = new Map();
+  let frontF = [from];
+  let frontB = [to];
+  let fetches = 0;
+  let meet = null;
+
+  const neighbours = async (id) => {
+    fetches++;
+    const a = await mbFetch(`artist/${id}?inc=artist-rels`);
+    names.set(id, { name: a.name, type: a.type });
+    const out = [];
+    for (const r of a.relations || []) {
+      if (!r.artist || r.artist.id === id) continue;
+      names.set(r.artist.id, { name: r.artist.name, type: r.artist.type });
+      out.push(r.artist.id);
+    }
+    return out;
+  };
+
+  while (!meet && frontF.length && frontB.length && fetches < BUDGET) {
+    // Grow whichever side is cheaper to grow.
+    const fwd = frontF.length <= frontB.length;
+    const front = fwd ? frontF : frontB;
+    const mine = fwd ? seen.f : seen.b;
+    const theirs = fwd ? seen.b : seen.f;
+    const next = [];
+    for (const id of front) {
+      if (fetches >= BUDGET) break;
+      let nb;
+      try { nb = await neighbours(id); } catch { continue; }
+      for (const other of nb) {
+        if (mine.has(other)) continue;
+        mine.set(other, id);
+        if (theirs.has(other)) { meet = other; break; }
+        next.push(other);
+      }
+      if (meet) break;
+    }
+    if (fwd) frontF = next; else frontB = next;
+  }
+
+  if (!meet) return sendJson(res, 200, { found: false, searched: fetches, budget: BUDGET });
+
+  const chain = [];
+  for (let id = meet; id != null; id = seen.f.get(id)) chain.unshift(id);
+  for (let id = seen.b.get(meet); id != null; id = seen.b.get(id)) chain.push(id);
+  sendJson(res, 200, {
+    found: true,
+    distance: chain.length - 1,
+    path: chain.map((id) => ({ id, name: (names.get(id) || {}).name || '?', type: (names.get(id) || {}).type })),
+    searched: fetches,
+  });
+}
+
 const routes = {
   'GET /api/search': apiSearch,
   'GET /api/artist': apiArtist,
   'GET /api/enrich': apiEnrich,
   'GET /api/notability': apiNotability,
+  'GET /api/route': apiRoute,
 };
 
 // --- Server ------------------------------------------------------------------

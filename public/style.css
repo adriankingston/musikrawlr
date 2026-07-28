@@ -304,8 +304,46 @@ main { flex: 1; display: flex; min-height: 0; }
 .lg-hint { opacity: .8; }
 .lg-credit a { color: inherit; }
 
-/* ---------- Six degrees ---------- */
-.deg-body { padding: 8px 10px; }
+/* ---------- Six degrees (floats on the canvas, between its two artists) --- */
+#degrees {
+  position: absolute;
+  z-index: 18;
+  width: 260px;
+  margin: -46px 0 0 -130px; /* centre on the midpoint */
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+#degrees::after { /* a little stem pointing down at the line between them */
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -7px;
+  width: 11px;
+  height: 11px;
+  margin-left: -6px;
+  background: inherit;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  transform: rotate(45deg);
+}
+.deg-actions { display: flex; gap: 6px; margin-top: 7px; }
+.deg-btn {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  cursor: pointer;
+}
+.deg-btn:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.deg-btn[disabled] { opacity: .5; cursor: default; border-color: var(--line); color: var(--muted); }
 .deg-picks { display: flex; align-items: center; gap: 6px; }
 .deg-picks select {
   flex: 1;

@@ -9,7 +9,7 @@
     credit: $('#credit'), timebar: $('#timebar'), tbPlay: $('#tb-play'),
     relfilter: $('#relfilter'), relList: $('#rel-list'), relState: $('#rel-state'),
     degrees: $('#degrees'), degA: $('#deg-a'), degB: $('#deg-b'),
-    degState: $('#deg-state'), degResult: $('#deg-result'),
+    degResult: $('#deg-result'), degFind: $('#deg-find'), degReveal: $('#deg-reveal'),
     tbYear: $('#hud-year'), tbRange: $('#tb-range'), tbHist: $('#tb-hist'), tbAll: $('#tb-all'),
   };
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -332,6 +332,8 @@
       glowCtx.fillRect(pos.x - R, pos.y - R, R * 2, R * 2);
     });
     glowCtx.globalCompositeOperation = 'source-over';
+    // The card rides with the nodes, so it re-anchors on the same frames.
+    placeDegCard();
   }
 
   function queueGlow() {
@@ -505,7 +507,26 @@
   // over what you've actually uncovered, so "no route yet" is the game: keep
   // expanding until the two halves meet.
   let degPrev = null; // last known distance, to notice the moment it connects
-  let degUserPicked = false; // once you choose ends yourself, we stop retargeting
+  let degUserPicked = false; // once a pair is in play, stop re-aiming at new hubs
+  let degTarget = null; // the true distance, once MusicBrainz has been asked
+  let degChain = null; // and the chain behind it, held back until you give up
+
+  // Park the card on the midpoint between its two artists, so the game reads
+  // as being about those two nodes rather than about a panel somewhere else.
+  function placeDegCard() {
+    if (el.degrees.hidden) return;
+    const a = cy.getElementById(el.degA.value);
+    const b = cy.getElementById(el.degB.value);
+    if (a.empty() || b.empty()) return;
+    const pa = a.renderedPosition();
+    const pb = b.renderedPosition();
+    const w = el.stage.clientWidth;
+    const h = el.stage.clientHeight;
+    const x = Math.max(140, Math.min((pa.x + pb.x) / 2, w - 140));
+    const y = Math.max(70, Math.min((pa.y + pb.y) / 2, h - 20));
+    el.degrees.style.left = `${x}px`;
+    el.degrees.style.top = `${y}px`;
+  }
 
   function optionsFor(sel, keep) {
     const nodes = cy.nodes(':visible').sort((a, b) =>
@@ -521,20 +542,26 @@
     el.degrees.hidden = nodes.length < 2;
     if (el.degrees.hidden) {
       cy.elements().removeClass('on-path');
-      el.degState.textContent = '';
       degPrev = null;
+      degTarget = null;
+      degChain = null;
       return;
     }
     let a = el.degA.value;
     let b = el.degB.value;
-    // Until you choose your own ends, the game tracks what you've opened:
-    // first hub against the most recent one. `expanded` is a Set, so it
-    // already remembers the order you opened them in.
+    // A pair that's gone (removed, collapsed away) frees the game to re-aim.
+    if (degUserPicked && (cy.getElementById(a).empty() || cy.getElementById(b).empty())) {
+      degUserPicked = false;
+    }
+    // The game aims itself at the first two things you open — then STAYS
+    // there. Re-aiming on every expansion would drag the target onto
+    // whatever you just opened, including the hops a reveal walks in.
     if (!degUserPicked) {
       const hubs = [...expanded].filter((id) => cy.getElementById(id).nonempty());
       if (hubs.length > 1) {
         a = hubs[0];
         b = hubs[hubs.length - 1];
+        degUserPicked = true;
       } else {
         a = a || nodes[0].id();
         b = b || nodes[nodes.length - 1].id();
@@ -550,31 +577,42 @@
     const a = cy.getElementById(el.degA.value);
     const b = cy.getElementById(el.degB.value);
     if (a.empty() || b.empty() || a.id() === b.id()) {
-      el.degState.textContent = '';
       el.degResult.innerHTML = '<span class="pe-hint">Pick two different artists.</span>';
+      el.degFind.hidden = true;
+      el.degReveal.hidden = true;
       degPrev = null;
+      placeDegCard();
       return;
     }
     const dij = cy.elements(':visible').dijkstra({ root: a, weight: () => 1, directed: false });
     const dist = dij.distanceTo(b);
 
     if (!Number.isFinite(dist)) {
-      el.degState.textContent = 'no route';
-      el.degResult.innerHTML = '<span class="pe-hint">No route yet — expand members and'
-        + ' bands until the two sides meet.</span>';
+      // Not linked in what you've uncovered. Once MusicBrainz has told us how
+      // far apart they really are, that number becomes the target to chase.
+      el.degResult.innerHTML = degTarget
+        ? `<span class="deg-hit">${degTarget} step${degTarget === 1 ? '' : 's'}</span>`
+          + ' apart — go find them<div class="deg-chain">Expand members and bands'
+          + ' until the two sides meet.</div>'
+        : '<span class="pe-hint">Not linked yet — expand to connect them, or ask'
+          + ' how far apart they really are.</span>';
+      el.degFind.hidden = degTarget != null;
+      el.degReveal.hidden = !degChain;
       degPrev = Infinity;
+      placeDegCard();
       return;
     }
 
     const path = dij.pathTo(b);
     path.addClass('on-path');
     const hops = path.nodes();
-    el.degState.textContent = `${dist} step${dist === 1 ? '' : 's'}`;
     const chain = hops.map((n, i) =>
       (i ? '<span class="deg-sep"> → </span>' : '')
       + `<button data-goto="${n.id()}">${esc(n.data('name'))}</button>`).join('');
     el.degResult.innerHTML = `<span class="deg-hit">${dist} step${dist === 1 ? '' : 's'}</span>`
       + ` apart<div class="deg-chain">${chain}</div>`;
+    el.degFind.hidden = true;
+    el.degReveal.hidden = true;
 
     // Celebrate only when the GRAPH closed the gap. Switching the dropdown
     // from an unconnected pair to a connected one isn't a discovery.
@@ -584,9 +622,58 @@
       queueGlow();
     }
     degPrev = dist;
+    placeDegCard();
   }
 
-  const degPick = () => { degUserPicked = true; degPrev = null; computeDegrees(); };
+  // Ask MusicBrainz how far apart they actually are — that's the target.
+  el.degFind.addEventListener('click', async () => {
+    const a = cy.getElementById(el.degA.value);
+    const b = cy.getElementById(el.degB.value);
+    if (a.empty() || b.empty()) return;
+    el.degFind.disabled = true;
+    el.degFind.textContent = 'Searching…';
+    setStatus(`Looking for a link between ${a.data('name')} and ${b.data('name')}…`);
+    try {
+      const d = await api(`/api/route?from=${a.id()}&to=${b.id()}`);
+      if (d.found) {
+        degTarget = d.distance;
+        degChain = d.path;
+        setStatus(`They're ${d.distance} steps apart — go find it`, false, 6000);
+      } else {
+        setStatus(`No link found in ${d.searched} lookups — they may be far apart`, true, 6000);
+      }
+    } catch (err) {
+      setStatus(`Route search failed: ${err.message}`, true, 5000);
+    } finally {
+      el.degFind.disabled = false;
+      el.degFind.textContent = 'Find the link';
+      computeDegrees();
+    }
+  });
+
+  // Give up: walk the answer onto the canvas, hop by hop.
+  el.degReveal.addEventListener('click', async () => {
+    if (!degChain) return;
+    const chain = degChain;
+    degChain = null;
+    el.degReveal.disabled = true;
+    el.degReveal.textContent = 'Revealing…';
+    for (const step of chain.slice(1, -1)) {
+      ensureNode({ id: step.id, name: step.name, type: step.type });
+      await expand(step.id);
+    }
+    el.degReveal.disabled = false;
+    el.degReveal.textContent = 'Reveal it';
+    computeDegrees();
+  });
+
+  const degPick = () => {
+    degUserPicked = true;
+    degPrev = null;
+    degTarget = null; // a new pairing is a new puzzle
+    degChain = null;
+    computeDegrees();
+  };
   el.degA.addEventListener('change', degPick);
   el.degB.addEventListener('change', degPick);
   el.degResult.addEventListener('click', (e) => {
