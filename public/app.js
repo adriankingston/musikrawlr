@@ -334,8 +334,10 @@
       glowCtx.fillRect(pos.x - R, pos.y - R, R * 2, R * 2);
     });
     glowCtx.globalCompositeOperation = 'source-over';
-    // The card rides with the nodes, so it re-anchors on the same frames.
+    // The card and any live reactions ride with the nodes, so they re-anchor
+    // on the same frames.
     placeDegCard();
+    if (fxLive.length) positionReactions();
   }
 
   function queueGlow() {
@@ -519,6 +521,51 @@
   // Hot or cold on the last thing you opened. Once the true chain is known
   // we can be specific without giving the answer away; before that, the only
   // honest signal is whether the two sides met.
+  // ---- reactions on the canvas ----
+  // A line of text in a panel is easy to miss, so the verdict goes off at the
+  // node you just opened: a burst of "Oh yeah!" for a hit, one drooping
+  // "Yeah nah" for a miss. Each piece tracks its node while the layout is
+  // still settling, so the reaction stays attached to what caused it.
+  const fxLive = [];
+
+  function fireReaction(id, warm) {
+    const n = cy.getElementById(id);
+    if (n.empty() || !n.visible()) return;
+    const pieces = warm ? 7 : 1;
+    for (let i = 0; i < pieces; i++) {
+      const s = document.createElement('span');
+      s.className = `fx ${warm ? 'fx-yeah' : 'fx-nah'}`;
+      s.textContent = warm ? 'Oh yeah!' : 'Yeah nah';
+      if (warm) {
+        const ang = (i / pieces) * Math.PI * 2 + Math.random() * 0.5;
+        const reach = 80 + Math.random() * 70;
+        s.style.setProperty('--dx', `${Math.cos(ang) * reach}px`);
+        s.style.setProperty('--dy', `${Math.sin(ang) * reach}px`);
+        s.style.setProperty('--rot', `${(Math.random() - 0.5) * 40}deg`);
+        s.style.fontSize = `${13 + Math.random() * 8}px`;
+        s.style.animationDelay = `${i * 45}ms`;
+      }
+      el.stage.appendChild(s);
+      const piece = { s, n };
+      fxLive.push(piece);
+      s.addEventListener('animationend', () => {
+        s.remove();
+        const at = fxLive.indexOf(piece);
+        if (at >= 0) fxLive.splice(at, 1);
+      });
+    }
+    positionReactions();
+  }
+
+  function positionReactions() {
+    for (const { s, n } of fxLive) {
+      if (n.removed()) { s.style.display = 'none'; continue; }
+      const p = n.renderedPosition();
+      s.style.left = `${p.x}px`;
+      s.style.top = `${p.y}px`;
+    }
+  }
+
   function showWarmth(connected, dist, before) {
     const id = degJustExpanded;
     degJustExpanded = null;
@@ -544,6 +591,7 @@
       el.degWarm.classList.toggle('warm', warm);
       el.degWarm.hidden = false;
       setStatus(msg, false, 3500);
+      fireReaction(id, warm);
       return;
     }
     if (degChain) {
@@ -571,6 +619,7 @@
     // Mirror it to the status pill — the card may be minimised, or your eyes
     // may be on the graph rather than on it.
     setStatus(msg, false, 3500);
+    fireReaction(id, warm);
   }
 
   let degPos = null; // where you dragged it to, if you did

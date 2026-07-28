@@ -304,6 +304,49 @@ main { flex: 1; display: flex; min-height: 0; }
 .lg-hint { opacity: .8; }
 .lg-credit a { color: inherit; }
 
+/* ---------- Reactions that fire off the node you just opened ---------- */
+.fx {
+  position: absolute;
+  z-index: 19;
+  pointer-events: none;
+  font-family: 'Zen Dots', system-ui, sans-serif;
+  white-space: nowrap;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+.fx-yeah {
+  color: var(--accent);
+  text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 70%, transparent);
+  animation: fx-burst 1s cubic-bezier(.2, .7, .3, 1) forwards;
+}
+.fx-nah {
+  color: var(--muted);
+  font-size: 17px;
+  animation: fx-sink 1.5s ease-out forwards;
+}
+@keyframes fx-burst {
+  0% { transform: translate(-50%, -50%) scale(.4); opacity: 0; }
+  18% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+  100% {
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.85) rotate(var(--rot));
+    opacity: 0;
+  }
+}
+@keyframes fx-sink {
+  0% { transform: translate(-50%, -50%) scale(.85) rotate(0deg); opacity: 0; }
+  22% { transform: translate(-50%, -95%) scale(1) rotate(-3deg); opacity: .9; }
+  100% { transform: translate(-50%, -230%) scale(.9) rotate(-9deg); opacity: 0; }
+}
+/* Someone who's asked for less motion still gets the words, just calmly. */
+@media (prefers-reduced-motion: reduce) {
+  .fx-yeah, .fx-nah { animation: fx-fade 1.1s ease-out forwards; }
+  @keyframes fx-fade {
+    0% { transform: translate(-50%, -50%); opacity: 0; }
+    20% { transform: translate(-50%, -50%); opacity: 1; }
+    100% { transform: translate(-50%, -80%); opacity: 0; }
+  }
+}
+
 /* ---------- Six degrees (floats on the canvas, between its two artists) --- */
 #degrees {
   position: absolute;
