@@ -519,15 +519,33 @@
   // Hot or cold on the last thing you opened. Once the true chain is known
   // we can be specific without giving the answer away; before that, the only
   // honest signal is whether the two sides met.
-  function showWarmth(connected) {
+  function showWarmth(connected, dist, before) {
     const id = degJustExpanded;
     degJustExpanded = null;
-    if (!id || connected) { el.degWarm.hidden = true; return; }
+    if (!id) { el.degWarm.hidden = true; return; }
     const n = cy.getElementById(id);
     if (n.empty()) { el.degWarm.hidden = true; return; }
     const name = n.data('name');
     let warm = false;
     let msg;
+
+    // Already linked? Then the question is whether that opened a shortcut.
+    if (connected) {
+      if (!Number.isFinite(before) || before == null) {
+        msg = `Oh yeah — ${name} joined them up: ${dist} step${dist === 1 ? '' : 's'}`;
+        warm = true;
+      } else if (dist < before) {
+        msg = `Oh yeah — ${name} shortened it to ${dist} step${dist === 1 ? '' : 's'}`;
+        warm = true;
+      } else {
+        msg = `Yeah nah — still ${dist} step${dist === 1 ? '' : 's'} apart`;
+      }
+      el.degWarm.textContent = msg;
+      el.degWarm.classList.toggle('warm', warm);
+      el.degWarm.hidden = false;
+      setStatus(msg, false, 3500);
+      return;
+    }
     if (degChain) {
       const onChain = degChain.some((s) => s.id === id);
       // Progress means LINKS you've uncovered, not nodes you can see. All
@@ -550,6 +568,9 @@
     el.degWarm.textContent = msg;
     el.degWarm.classList.toggle('warm', warm);
     el.degWarm.hidden = false;
+    // Mirror it to the status pill — the card may be minimised, or your eyes
+    // may be on the graph rather than on it.
+    setStatus(msg, false, 3500);
   }
 
   let degPos = null; // where you dragged it to, if you did
@@ -695,6 +716,7 @@
 
   function computeDegrees(opts = {}) {
     cy.elements().removeClass('on-path');
+    const before = degPrev; // captured before this pass overwrites it
     const a = cy.getElementById(el.degA.value);
     const b = cy.getElementById(el.degB.value);
     if (a.empty() || b.empty() || a.id() === b.id()) {
@@ -744,7 +766,7 @@
         el.degFind.textContent = 'Find the link';
       }
       el.degReveal.hidden = !degChain;
-      if (opts.announce) showWarmth(false);
+      if (opts.announce) showWarmth(false, Infinity, before);
       degPrev = Infinity;
       updateDegLabel();
       placeDegCard();
@@ -761,7 +783,7 @@
       + ` apart<div class="deg-chain">${chain}</div>`;
     el.degFind.hidden = true;
     el.degReveal.hidden = true;
-    if (opts.announce) showWarmth(true);
+    if (opts.announce) showWarmth(true, dist, before);
 
     // Celebrate only when the GRAPH closed the gap. Switching the dropdown
     // from an unconnected pair to a connected one isn't a discovery.
