@@ -812,14 +812,17 @@
         const others = [...expanded].filter((id) => id !== degAimAt && cy.getElementById(id).nonempty());
         if (others.length) {
           a = others[0];
+          b = degAimAt;
         } else {
-          // First band on the canvas: no other hub to span from yet, so take
-          // any of its satellites — otherwise both ends resolve to the same
-          // artist and the card dead-ends on "pick two different artists".
+          // First band on the canvas: no other hub to span from yet. The band
+          // you launched takes the FIRST slot — it's the anchor of the game —
+          // and a satellite stands in as the far end until a real opponent
+          // arrives (otherwise both ends resolve to the same artist and the
+          // card dead-ends on "pick two different artists").
+          a = degAimAt;
           const alt = nodes.filter((n) => n.id() !== degAimAt);
-          if (alt.length) a = alt[0].id();
+          if (alt.length) b = alt[0].id();
         }
-        b = degAimAt;
         degAimAt = null;
       } else {
         a = a || nodes[0].id();
@@ -1599,13 +1602,16 @@
     if (sel.length) { e.preventDefault(); removeNode(sel[0].id()); }
   });
 
-  // Manual double-tap detection (works for touch too).
+  // Manual double-tap detection (works for touch too). Double-tap TOGGLES:
+  // it opens an unexplored node and closes an expanded one — right-click
+  // still closes, but a two-finger touchpad click mid-game is slower.
   let lastTap = { id: null, t: 0 };
   cy.on('tap', 'node', (e) => {
     const id = e.target.id();
     const now = Date.now();
     if (lastTap.id === id && now - lastTap.t < 380) {
-      expand(id);
+      if (expanded.has(id)) collapseNode(id);
+      else expand(id);
       lastTap = { id: null, t: 0 };
     } else {
       lastTap = { id, t: now };
