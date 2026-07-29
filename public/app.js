@@ -10,6 +10,7 @@
     relfilter: $('#relfilter'), relList: $('#rel-list'), relState: $('#rel-state'),
     degrees: $('#degrees'), degA: $('#deg-a'), degB: $('#deg-b'),
     degResult: $('#deg-result'), degFind: $('#deg-find'), degReveal: $('#deg-reveal'),
+    degChallenge: $('#deg-challenge'),
     degBar: $('#deg-bar'), degLabel: $('#deg-label'), degMin: $('#deg-min'),
     degWarm: $('#deg-warm'),
     tbYear: $('#hud-year'), tbRange: $('#tb-range'), tbHist: $('#tb-hist'), tbAll: $('#tb-all'),
@@ -874,6 +875,7 @@
         el.degFind.textContent = 'Find the link';
       }
       el.degReveal.hidden = !degChain;
+      el.degChallenge.hidden = true; // there's already a game on
       if (opts.announce) showWarmth(false, Infinity, before);
       degPrev = Infinity;
       updateDegLabel();
@@ -899,6 +901,8 @@
         + ` apart<div class="deg-chain">${chain}</div>`;
     el.degFind.hidden = true;
     el.degReveal.hidden = true;
+    // Nothing to solve here — so offer a proper opponent instead.
+    el.degChallenge.hidden = degMoves !== 0;
     if (opts.announce) showWarmth(true, dist, before);
 
     // Celebrate only when the GRAPH closed the gap. Switching the dropdown
@@ -976,6 +980,35 @@
   }
 
   el.degFind.addEventListener('click', () => runRouteSearch(false));
+
+  // Fetch someone worth playing against and drop them on the canvas, which
+  // (via addSeed) makes them the new target and starts a fresh game.
+  el.degChallenge.addEventListener('click', async () => {
+    const a = cy.getElementById(el.degA.value);
+    if (a.empty()) return;
+    el.degChallenge.disabled = true;
+    el.degChallenge.textContent = 'Looking…';
+    setStatus(`Finding someone a good distance from ${a.data('name')}…`);
+    try {
+      let d = await api('/api/challenger?from=' + a.id());
+      // Everything the walk turned up sat too close — go further out.
+      if (!d.found && d.tooClose) d = await api('/api/challenger?hops=8&from=' + a.id());
+      if (!d.found) {
+        setStatus(d.tooClose
+          ? `Everything near ${a.data('name')} is a step or two away — try again`
+          : 'Couldn\'t find a challenger from there — try another artist', true, 5000);
+        return;
+      }
+      degUserPicked = false; // let the new arrival take the far end
+      addSeed(d.artist);
+      setStatus(`Your challenger: ${d.artist.name}`, false, 5000);
+    } catch (err) {
+      setStatus(`Challenger search failed: ${err.message}`, true, 5000);
+    } finally {
+      el.degChallenge.disabled = false;
+      el.degChallenge.textContent = 'Suggest a challenger';
+    }
+  });
 
   // Give up: walk the answer onto the canvas, hop by hop.
   el.degReveal.addEventListener('click', async () => {

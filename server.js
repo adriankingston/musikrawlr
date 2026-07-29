@@ -229,11 +229,7 @@ function loadNotability() {
   return notaStore;
 }
 
-async function apiNotability(req, res, url) {
-  const ids = (url.searchParams.get('ids') || '')
-    .split(',').map((s) => s.trim()).filter((s) => MBID_RE.test(s)).slice(0, 150);
-  if (!ids.length) return sendJson(res, 400, { error: 'No valid ids' });
-
+async function notabilityFor(ids) {
   const store = loadNotability();
   const missing = ids.filter((id) => !(id in store));
   if (missing.length) {
@@ -255,7 +251,74 @@ async function apiNotability(req, res, url) {
     for (const id of missing) if (!(id in store)) store[id] = 0;
     fs.writeFile(NOTA_FILE, JSON.stringify(store), () => {});
   }
-  sendJson(res, 200, { sitelinks: Object.fromEntries(ids.map((id) => [id, store[id] || 0])) });
+  return Object.fromEntries(ids.map((id) => [id, store[id] || 0]));
+}
+
+async function apiNotability(req, res, url) {
+  const ids = (url.searchParams.get('ids') || '')
+    .split(',').map((s) => s.trim()).filter((s) => MBID_RE.test(s)).slice(0, 150);
+  if (!ids.length) return sendJson(res, 400, { error: 'No valid ids' });
+  sendJson(res, 200, { sitelinks: await notabilityFor(ids) });
+}
+
+// Pick an opponent worth playing against: somewhere far enough out that the
+// answer isn't obvious, but a band you'd actually recognise. A random walk
+// costs one lookup per hop — a breadth-first sweep to the same depth would
+// cost hundreds — and stepping person→band→person keeps us landing on bands.
+async function apiChallenger(req, res, url) {
+  const from = (url.searchParams.get('from') || '').trim();
+  if (!MBID_RE.test(from)) return sendJson(res, 400, { error: 'Invalid MBID' });
+  const hops = Math.min(8, Math.max(3, Number(url.searchParams.get('hops')) || 5));
+
+  // Walk membership edges only. Tributes and namesakes are dead weight —
+  // "Finnish Toto tribute band" is nobody's idea of an opponent — and
+  // member-of alternates band→player→band on its own.
+  const junk = /tribute|karaoke|cover band/i;
+  const bands = [];
+  const seen = new Set([from]);
+  for (let attempt = 0; attempt < 3 && !bands.length; attempt++) {
+    let current = from;
+    for (let i = 0; i < hops; i++) {
+      let a;
+      try { a = await mbFetch(`artist/${current}?inc=artist-rels`); } catch { break; }
+      const next = (a.relations || [])
+        .filter((r) => r.artist && r.type === 'member of band' && !seen.has(r.artist.id))
+        .map((r) => r.artist)
+        .filter((x) => !junk.test(x.disambiguation || ''));
+      if (!next.length) break;
+      const pick = next[Math.floor(Math.random() * next.length)];
+      seen.add(pick.id);
+      current = pick.id;
+      // Only count bands far enough out to be a real puzzle.
+      if (pick.type === 'Group' && i >= 2) bands.push(pick);
+    }
+  }
+  if (!bands.length) return sendJson(res, 200, { found: false });
+
+  // Prefer the most written-about — an opponent you've actually heard of.
+  let ranked = bands;
+  try {
+    const fame = await notabilityFor(bands.map((b) => b.id));
+    ranked = [...bands].sort((x, y) => (fame[y.id] || 0) - (fame[x.id] || 0));
+  } catch { /* fame is optional — the walk already gave us candidates */ }
+
+  // Wandering far is not the same as BEING far: the walk can loop back
+  // through a dense scene and hand you a band two steps from home (Split Enz
+  // → Space Waltz). Check each candidate properly, cheaply — failing to find
+  // it inside a small budget is itself evidence it's a decent distance.
+  for (const cand of ranked.slice(0, 3)) {
+    const r = await findRoute(from, cand.id, 12);
+    if (!r.found || r.distance >= 3) {
+      return sendJson(res, 200, {
+        found: true,
+        distance: r.found ? r.distance : null,
+        artist: {
+          id: cand.id, name: cand.name, type: cand.type, disambiguation: cand.disambiguation,
+        },
+      });
+    }
+  }
+  sendJson(res, 200, { found: false, tooClose: true });
 }
 
 // Is there a chain between two artists, and how long? Bidirectional BFS over
@@ -263,15 +326,9 @@ async function apiNotability(req, res, url) {
 // searches meet in the middle. Every lookup is the same cached artist fetch
 // the graph uses, so a second run over familiar ground is instant — but a
 // cold search is rate-limited to 1/sec, hence the hard budget.
-async function apiRoute(req, res, url) {
-  const from = (url.searchParams.get('from') || '').trim();
-  const to = (url.searchParams.get('to') || '').trim();
-  if (!MBID_RE.test(from) || !MBID_RE.test(to)) {
-    return sendJson(res, 400, { error: 'Invalid MBID' });
-  }
-  if (from === to) return sendJson(res, 200, { found: true, distance: 0, path: [] });
-
-  const BUDGET = Math.min(60, Math.max(5, Number(url.searchParams.get('budget')) || 34));
+async function findRoute(from, to, budget) {
+  if (from === to) return { found: true, distance: 0, path: [] };
+  const BUDGET = Math.min(60, Math.max(5, budget || 34));
   const seen = { f: new Map([[from, null]]), b: new Map([[to, null]]) };
   const names = new Map();
   let frontF = [from];
@@ -325,24 +382,33 @@ async function apiRoute(req, res, url) {
     // corner of MusicBrainz without meeting the other — a real "no link",
     // not merely a search that ran out of road.
     const exhausted = frontF.length === 0 || frontB.length === 0;
-    return sendJson(res, 200, {
+    return {
       found: false,
       exhausted,
       atLeast: doneF + doneB + 1,
       searched: fetches,
       budget: BUDGET,
-    });
+    };
   }
 
   const chain = [];
   for (let id = meet; id != null; id = seen.f.get(id)) chain.unshift(id);
   for (let id = seen.b.get(meet); id != null; id = seen.b.get(id)) chain.push(id);
-  sendJson(res, 200, {
+  return {
     found: true,
     distance: chain.length - 1,
     path: chain.map((id) => ({ id, name: (names.get(id) || {}).name || '?', type: (names.get(id) || {}).type })),
     searched: fetches,
-  });
+  };
+}
+
+async function apiRoute(req, res, url) {
+  const from = (url.searchParams.get('from') || '').trim();
+  const to = (url.searchParams.get('to') || '').trim();
+  if (!MBID_RE.test(from) || !MBID_RE.test(to)) {
+    return sendJson(res, 400, { error: 'Invalid MBID' });
+  }
+  sendJson(res, 200, await findRoute(from, to, Number(url.searchParams.get('budget'))));
 }
 
 const routes = {
@@ -351,6 +417,7 @@ const routes = {
   'GET /api/enrich': apiEnrich,
   'GET /api/notability': apiNotability,
   'GET /api/route': apiRoute,
+  'GET /api/challenger': apiChallenger,
 };
 
 // --- Server ------------------------------------------------------------------
