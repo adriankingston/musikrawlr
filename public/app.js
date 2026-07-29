@@ -519,6 +519,7 @@
   let degDepth = 34; // lookups the next search may spend
   let degJustExpanded = null; // the node you opened most recently
   let degLinksSeen = 0; // links of the known route you'd uncovered last time
+  let degPending = []; // moves played before the route was known — judged late
   let degAuto = false; // whether the background route search has been kicked off
   let degRevealing = false; // the reveal walk shouldn't drag the ends around
   let degAimAt = null; // an artist you just searched out, to aim the game at
@@ -665,8 +666,10 @@
     } else {
       // We don't know the answer yet, so we can't call that a wrong turn.
       // Saying "yeah nah" here told you Brooks Wackerman was a dud when he
-      // was on the way. Go and find the real distance instead.
+      // was on the way. Remember the move — when the route arrives, the ones
+      // that were on it get their "Oh yeah" late rather than never.
       neutral = true;
+      degPending.push(id);
       msg = degMiss
         ? 'Still not linked — Search deeper to unlock hot/cold hints'
         : 'Still not linked — working out how far apart they are…';
@@ -887,6 +890,10 @@
           + ' them, or ask how far apart they really are.</span>';
         el.degFind.hidden = false;
         el.degFind.textContent = 'Find the link';
+        // Learn the real distance NOW, not on the first move — on a cold
+        // server the search takes a minute, and every click made before the
+        // answer lands can only be judged "neutral".
+        maybeAutoRoute();
       }
       el.degReveal.hidden = !degChain;
       el.degChallenge.hidden = true; // there's already a game on
@@ -975,6 +982,26 @@
         // not something the next click gets the credit for.
         degLinksSeen = chainLinksFound();
         setStatus(`They're ${d.distance} steps apart — go find it`, false, 6000);
+        // Moves played while the answer was still coming in were only ever
+        // judged "neutral" — now we know the route, the ones that were ON it
+        // get their "Oh yeah" late rather than never.
+        const onRoute = degPending.filter((id) => degChain.some((s) => s.id === id)
+          && cy.getElementById(id).nonempty());
+        degPending = [];
+        // (Unless the pair already connected meanwhile — that join was
+        // celebrated live, no need to cheer twice.)
+        if (onRoute.length && !Number.isFinite(degPrev)) {
+          const names = onRoute.map((id) => cy.getElementById(id).data('name'));
+          const links = chainLinksFound();
+          const total = degChain.length - 1;
+          const msg = `Oh yeah — ${names.join(' and ')} ${names.length > 1 ? 'were' : 'was'}`
+            + ` on the route all along (${links} of ${total} links found)`;
+          el.degWarm.textContent = msg;
+          el.degWarm.classList.add('warm');
+          el.degWarm.hidden = false;
+          setStatus(msg, false, 5000);
+          onRoute.forEach((id, i) => setTimeout(() => fireReaction(id, true), i * 450));
+        }
       } else {
         degMiss = {
           exhausted: !!d.exhausted, atLeast: d.atLeast, searched: d.searched, budget: d.budget,
@@ -1058,6 +1085,7 @@
     degDepth = 34;
     degJustExpanded = null;
     degLinksSeen = 0;
+    degPending = [];
     degAuto = false;
     degMoves = 0;
     el.degWarm.hidden = true;
@@ -1785,6 +1813,7 @@
       degChain = null;
       degTarget = null;
       degLinksSeen = 0;
+      degPending = [];
     }
     updateOverlays();
     cy.$(':selected').unselect();
