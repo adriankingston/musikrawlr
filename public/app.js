@@ -246,6 +246,12 @@
       { selector: 'edge.hl, edge:selected', style: {
         'line-opacity': 1, width: 2.4, 'text-opacity': 1,
       } },
+      // Already played and judged cold in the six-degrees game — greyed so
+      // you can see at a glance what you've tried. Cleared on a new pairing.
+      { selector: 'node.tried', style: {
+        'background-color': '#4d5a63', opacity: 0.55, 'text-opacity': 0.4,
+      } },
+      { selector: 'node.tried:selected', style: { opacity: 0.7 } },
       // Time-scrub mode (last, so it wins): inactive elements recede,
       // undated relationships ghost rather than pretend to a date.
       { selector: 'node.t-dim', style: { opacity: 0.12 } },
@@ -321,6 +327,7 @@
       let a = 0.35;
       if (n.selected()) a = 0.6;
       if (n.hasClass('on-path')) a = Math.max(a, 0.72); // the found route burns brighter
+      if (n.hasClass('tried')) a *= 0.25; // judged cold — quieter, not gone
       if (n.hasClass('t-dim')) a *= 0.08;
       const [cr, cg, cb] = hexToRgb(glowColor(n));
       const g = glowCtx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, R);
@@ -635,6 +642,7 @@
         warm = true;
       } else {
         msg = `Yeah nah — still ${dist} step${dist === 1 ? '' : 's'} apart`;
+        n.addClass('tried'); // greyed, so you can see what you've ruled out
       }
       el.degWarm.textContent = msg;
       el.degWarm.classList.toggle('warm', warm);
@@ -662,6 +670,7 @@
         msg = `Oh yeah — that opened up a link (${links} of ${total} found)`;
       } else {
         msg = `Yeah nah — ${name} isn't on the route I found (${links} of ${total})`;
+        n.addClass('tried'); // greyed, so you can see what you've ruled out
       }
     } else {
       // We don't know the answer yet, so we can't call that a wrong turn.
@@ -1088,6 +1097,7 @@
     degPending = [];
     degAuto = false;
     degMoves = 0;
+    cy.nodes('.tried').removeClass('tried'); // fresh puzzle, clean slate
     el.degWarm.hidden = true;
     computeDegrees();
   };
@@ -1814,6 +1824,7 @@
       degTarget = null;
       degLinksSeen = 0;
       degPending = [];
+      cy.nodes('.tried').removeClass('tried'); // fresh puzzle, clean slate
     }
     updateOverlays();
     cy.$(':selected').unselect();
