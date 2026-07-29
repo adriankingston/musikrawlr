@@ -1,4 +1,4 @@
-# Band graph
+# musikrawlr
 
 Who played with whom — an interactive knowledge graph of bands and musicians,
 built on the [MusicBrainz](https://musicbrainz.org) database.
