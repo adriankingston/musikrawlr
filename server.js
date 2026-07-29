@@ -268,45 +268,76 @@ async function apiNotability(req, res, url) {
 async function apiChallenger(req, res, url) {
   const from = (url.searchParams.get('from') || '').trim();
   if (!MBID_RE.test(from)) return sendJson(res, 400, { error: 'Invalid MBID' });
-  const hops = Math.min(8, Math.max(3, Number(url.searchParams.get('hops')) || 5));
+  const hops = Math.min(8, Math.max(3, Number(url.searchParams.get('hops')) || 7));
 
   // Walk membership edges only. Tributes and namesakes are dead weight —
   // "Finnish Toto tribute band" is nobody's idea of an opponent — and
-  // member-of alternates band→player→band on its own.
+  // member-of alternates band→player→band on its own, so Groups only ever
+  // appear at odd hops. Each attempt gets a fresh `seen`: a small band's
+  // members exhaust a shared set after one walk, killing every retry.
   const junk = /tribute|karaoke|cover band/i;
   const bands = [];
-  const seen = new Set([from]);
-  for (let attempt = 0; attempt < 3 && !bands.length; attempt++) {
-    let current = from;
-    for (let i = 0; i < hops; i++) {
+  const bandIds = new Set([from]);
+  const near = new Set(); // bands proven 2 steps from home — never candidates
+  let homeMembers = null; // from's own member ids, filled by the first fetch
+  for (let attempt = 0; attempt < 8 && bands.length < 8; attempt++) {
+    const seen = new Set([from]);
+    const stack = [from];
+    for (let step = 0; stack.length && step < hops * 3; step++) {
+      const id = stack[stack.length - 1];
       let a;
-      try { a = await mbFetch(`artist/${current}?inc=artist-rels`); } catch { break; }
-      const next = (a.relations || [])
-        .filter((r) => r.artist && r.type === 'member of band' && !seen.has(r.artist.id))
+      try { a = await mbFetch(`artist/${id}?inc=artist-rels`); } catch { break; }
+      const rels = (a.relations || []).filter((r) => r.artist && r.type === 'member of band');
+      if (!homeMembers) homeMembers = new Set(rels.map((r) => r.artist.id));
+      const depth = stack.length - 1;
+      // Only count bands far enough out to be a real puzzle — and a band
+      // sharing a member with home is 2 steps away no matter how far the
+      // walk wandered to reach it (Split Enz → Space Waltz, again).
+      if (depth >= 4 && a.type === 'Group' && !bandIds.has(id)) {
+        if (rels.some((r) => homeMembers.has(r.artist.id))) near.add(id);
+        else {
+          bandIds.add(id);
+          bands.push({ id, name: a.name, type: a.type, disambiguation: a.disambiguation, depth });
+        }
+      }
+      // Near bands stay walkable — they're the highways out of the scene —
+      // they just can't be the destination.
+      const next = rels
+        .filter((r) => !seen.has(r.artist.id))
         .map((r) => r.artist)
         .filter((x) => !junk.test(x.disambiguation || ''));
-      if (!next.length) break;
+      // A member with no other bands is a dead end, not a failed walk —
+      // back up a node and leave through someone else. Same at max depth:
+      // bounce and spend the remaining steps elsewhere.
+      if (!next.length || stack.length >= hops) { stack.pop(); continue; }
       const pick = next[Math.floor(Math.random() * next.length)];
       seen.add(pick.id);
-      current = pick.id;
-      // Only count bands far enough out to be a real puzzle.
-      if (pick.type === 'Group' && i >= 2) bands.push(pick);
+      stack.push(pick.id);
     }
   }
   if (!bands.length) return sendJson(res, 200, { found: false });
 
   // Prefer the most written-about — an opponent you've actually heard of.
   let ranked = bands;
+  let fame = {};
   try {
-    const fame = await notabilityFor(bands.map((b) => b.id));
-    ranked = [...bands].sort((x, y) => (fame[y.id] || 0) - (fame[x.id] || 0));
+    fame = await notabilityFor(bands.map((b) => b.id));
+    ranked = [...bands].sort((x, y) => (fame[y.id] || 0) - (fame[x.id] || 0) || (y.depth || 0) - (x.depth || 0));
   } catch { /* fame is optional — the walk already gave us candidates */ }
+  if (url.searchParams.get('debug')) {
+    const detail = [];
+    for (const cand of ranked) {
+      const r = await findRoute(from, cand.id, 12);
+      detail.push({ name: cand.name, fame: fame[cand.id] || 0, distance: r.found ? r.distance : null });
+    }
+    return sendJson(res, 200, { pool: detail });
+  }
 
   // Wandering far is not the same as BEING far: the walk can loop back
   // through a dense scene and hand you a band two steps from home (Split Enz
   // → Space Waltz). Check each candidate properly, cheaply — failing to find
   // it inside a small budget is itself evidence it's a decent distance.
-  for (const cand of ranked.slice(0, 3)) {
+  for (const cand of ranked.slice(0, 6)) {
     const r = await findRoute(from, cand.id, 12);
     if (!r.found || r.distance >= 3) {
       return sendJson(res, 200, {
