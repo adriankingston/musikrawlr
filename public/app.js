@@ -810,7 +810,15 @@
     if (!degUserPicked) {
       if (degAimAt && cy.getElementById(degAimAt).nonempty()) {
         const others = [...expanded].filter((id) => id !== degAimAt && cy.getElementById(id).nonempty());
-        if (others.length) a = others[0];
+        if (others.length) {
+          a = others[0];
+        } else {
+          // First band on the canvas: no other hub to span from yet, so take
+          // any of its satellites — otherwise both ends resolve to the same
+          // artist and the card dead-ends on "pick two different artists".
+          const alt = nodes.filter((n) => n.id() !== degAimAt);
+          if (alt.length) a = alt[0].id();
+        }
         b = degAimAt;
         degAimAt = null;
       } else {
@@ -832,6 +840,9 @@
       el.degResult.innerHTML = '<span class="pe-hint">Pick two different artists.</span>';
       el.degFind.hidden = true;
       el.degReveal.hidden = true;
+      // Even with no pair set, an opponent can be conjured from whatever IS
+      // on the canvas — this is the front door to the game, keep it open.
+      el.degChallenge.hidden = a.empty() && b.empty();
       el.degWarm.hidden = true;
       degPrev = null;
       placeDegCard();
@@ -901,8 +912,9 @@
         + ` apart<div class="deg-chain">${chain}</div>`;
     el.degFind.hidden = true;
     el.degReveal.hidden = true;
-    // Nothing to solve here — so offer a proper opponent instead.
-    el.degChallenge.hidden = degMoves !== 0;
+    // A connected pair means no live puzzle — whether it arrived solved
+    // ("too easy") or you just won. Either way, offer the next opponent.
+    el.degChallenge.hidden = false;
     if (opts.announce) showWarmth(true, dist, before);
 
     // Celebrate only when the GRAPH closed the gap. Switching the dropdown
@@ -984,7 +996,13 @@
   // Fetch someone worth playing against and drop them on the canvas, which
   // (via addSeed) makes them the new target and starts a fresh game.
   el.degChallenge.addEventListener('click', async () => {
-    const a = cy.getElementById(el.degA.value);
+    // Anchor on the hub the new game will span from — refreshDegrees pairs
+    // the challenger against the first expanded hub, so distance must be
+    // measured from THERE. Measuring from a satellite (Jay Ziskrout) once
+    // served up Circle Jerks: far from him, two steps from Bad Religion.
+    const hubs = [...expanded].filter((id) => cy.getElementById(id).nonempty());
+    let a = hubs.length ? cy.getElementById(hubs[0]) : cy.getElementById(el.degA.value);
+    if (a.empty()) a = cy.getElementById(el.degB.value);
     if (a.empty()) return;
     el.degChallenge.disabled = true;
     el.degChallenge.textContent = 'Looking…';
