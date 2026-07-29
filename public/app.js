@@ -521,6 +521,7 @@
   let degAuto = false; // whether the background route search has been kicked off
   let degRevealing = false; // the reveal walk shouldn't drag the ends around
   let degAimAt = null; // an artist you just searched out, to aim the game at
+  let degMoves = 0; // expansions you've played since this pairing was set
 
   // Hot or cold on the last thing you opened. Once the true chain is known
   // we can be specific without giving the answer away; before that, the only
@@ -612,6 +613,7 @@
     const n = cy.getElementById(id);
     if (n.empty()) { el.degWarm.hidden = true; return; }
     const name = n.data('name');
+    degMoves++;
     let warm = false;
     let msg;
 
@@ -885,8 +887,16 @@
     const chain = hops.map((n, i) =>
       (i ? '<span class="deg-sep"> → </span>' : '')
       + `<button data-goto="${n.id()}">${esc(n.data('name'))}</button>`).join('');
-    el.degResult.innerHTML = `<span class="deg-hit">${dist} step${dist === 1 ? '' : 's'}</span>`
-      + ` apart<div class="deg-chain">${chain}</div>`;
+    // Two bands that share a member are joined the moment the second one
+    // lands, so the answer arrives before you've played a move. Say that
+    // outright rather than dressing a solved puzzle up as a win.
+    el.degResult.innerHTML = degMoves === 0
+      ? '<span class="deg-none">Too easy</span> — already linked'
+        + `<div class="deg-chain">${chain}</div>`
+        + '<div class="deg-chain deg-nudge">No game in this pair. Add a band from'
+        + ' further afield.</div>'
+      : `<span class="deg-hit">${dist} step${dist === 1 ? '' : 's'}</span>`
+        + ` apart<div class="deg-chain">${chain}</div>`;
     el.degFind.hidden = true;
     el.degReveal.hidden = true;
     if (opts.announce) showWarmth(true, dist, before);
@@ -995,6 +1005,7 @@
     degJustExpanded = null;
     degLinksSeen = 0;
     degAuto = false;
+    degMoves = 0;
     el.degWarm.hidden = true;
     computeDegrees();
   };
@@ -1712,6 +1723,7 @@
     if (!degUserPicked && !degRevealing) {
       degAimAt = a.id; // you went looking for this one — make it the target
       degAuto = false; // a new pairing deserves its own route search
+      degMoves = 0; // and a fresh scoreboard
       degMiss = null;
       degChain = null;
       degTarget = null;

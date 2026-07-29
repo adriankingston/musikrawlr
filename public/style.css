@@ -504,6 +504,7 @@ main { flex: 1; display: flex; min-height: 0; }
 }
 .deg-chain button:hover { color: var(--accent); }
 .deg-chain .deg-sep { color: var(--muted); }
+.deg-nudge { color: var(--muted); font-size: 11.5px; }
 
 /* ---------- Relationship filter ---------- */
 .rel-body {
