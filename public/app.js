@@ -1058,6 +1058,21 @@
       }
       degUserPicked = false; // let the new arrival take the far end
       addSeed(d.artist);
+      // The server worked out the route while choosing them — install it so
+      // the game starts fully loaded, with hot/cold live from the first move.
+      if (d.path) {
+        degTarget = d.distance;
+        degChain = d.path;
+        degMiss = null;
+        degAuto = true; // no background search needed
+        degLinksSeen = chainLinksFound();
+        refreshDegrees();
+      } else if (d.miss) {
+        degMiss = d.miss;
+        degAuto = true; // the server already dug deep — only the cap remains
+        degDepth = 60;
+        refreshDegrees();
+      }
       setStatus(`Your challenger: ${d.artist.name}`, false, 5000);
     } catch (err) {
       setStatus(`Challenger search failed: ${err.message}`, true, 5000);

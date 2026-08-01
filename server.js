@@ -337,14 +337,38 @@ async function apiChallenger(req, res, url) {
   // through a dense scene and hand you a band two steps from home (Split Enz
   // → Space Waltz). Check each candidate properly, cheaply — failing to find
   // it inside a small budget is itself evidence it's a decent distance.
+  // Prefer an opponent whose route we already HOLD — the game then starts
+  // fully loaded, instead of the player staring at "working it out…" for a
+  // minute of rate-limited lookups after the challenger lands.
+  let far = null; // famous but unroutable within the small budget — fallback
   for (const cand of ranked.slice(0, 6)) {
     const r = await findRoute(from, cand.id, 12);
-    if (!r.found || r.distance >= 3) {
+    if (r.found && r.distance >= 3) {
       return sendJson(res, 200, {
         found: true,
-        distance: r.found ? r.distance : null,
+        distance: r.distance,
+        path: r.path,
         artist: {
           id: cand.id, name: cand.name, type: cand.type, disambiguation: cand.disambiguation,
+        },
+      });
+    }
+    if (!r.found) far = far || cand;
+  }
+  if (far) {
+    // Nothing playable in hand, so dig out the far candidate's actual route
+    // now, while the player is already waiting on THIS request — not after.
+    const deep = await findRoute(from, far.id, 40);
+    if (!deep.found || deep.distance >= 3) {
+      return sendJson(res, 200, {
+        found: true,
+        distance: deep.found ? deep.distance : null,
+        path: deep.found ? deep.path : null,
+        miss: deep.found ? null : {
+          exhausted: !!deep.exhausted, atLeast: deep.atLeast, searched: deep.searched, budget: deep.budget,
+        },
+        artist: {
+          id: far.id, name: far.name, type: far.type, disambiguation: far.disambiguation,
         },
       });
     }
