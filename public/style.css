@@ -389,6 +389,10 @@ main { flex: 1; display: flex; min-height: 0; }
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
 }
+/* A loaded game reads differently from casual browsing. */
+#degrees.game-on {
+  border-color: var(--accent);
+}
 /* A stem pointing down at the gap it's asking about — but only while the
    card is still parked there; once dragged it would point at nothing. */
 #degrees::after {

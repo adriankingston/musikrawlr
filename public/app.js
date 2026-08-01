@@ -526,8 +526,6 @@
   let degDepth = 34; // lookups the next search may spend
   let degJustExpanded = null; // the node you opened most recently
   let degLinksSeen = 0; // links of the known route you'd uncovered last time
-  let degPending = []; // moves played before the route was known — judged late
-  let degAuto = false; // whether the background route search has been kicked off
   let degRevealing = false; // the reveal walk shouldn't drag the ends around
   let degAimAt = null; // an artist you just searched out, to aim the game at
   let degMoves = 0; // expansions you've played since this pairing was set
@@ -619,6 +617,10 @@
     const id = degJustExpanded;
     degJustExpanded = null;
     if (!id) { el.degWarm.hidden = true; return; }
+    // Two modes: casual browsing and the game. Until a game is LOADED —
+    // a route in hand, via Find the link or a challenger — expanding is
+    // just exploring, and nobody gets cheered or booed for exploring.
+    if (!degChain) { el.degWarm.hidden = true; return; }
     const n = cy.getElementById(id);
     if (n.empty()) { el.degWarm.hidden = true; return; }
     const name = n.data('name');
@@ -651,38 +653,24 @@
       fireReaction(id, warm);
       return;
     }
-    let neutral = false;
-    if (degChain) {
-      const onChain = degChain.some((s) => s.id === id);
-      const links = chainLinksFound();
-      const total = degChain.length - 1;
-      // Uncovering a link counts even when the node isn't on the one route
-      // we happen to hold — there are usually several equally short ways
-      // through. But it must be a link YOU just uncovered: the baseline is
-      // set when the route arrives, or the links that were already sitting
-      // there get credited to whatever you happened to click next.
-      const gained = links > degLinksSeen;
-      degLinksSeen = links;
-      warm = onChain || gained;
-      if (onChain) {
-        msg = `Oh yeah — ${name} is on the route (${links} of ${total} links found)`;
-      } else if (gained) {
-        msg = `Oh yeah — that opened up a link (${links} of ${total} found)`;
-      } else {
-        msg = `Yeah nah — ${name} isn't on the route I found (${links} of ${total})`;
-        n.addClass('tried'); // greyed, so you can see what you've ruled out
-      }
+    const onChain = degChain.some((s) => s.id === id);
+    const links = chainLinksFound();
+    const total = degChain.length - 1;
+    // Uncovering a link counts even when the node isn't on the one route
+    // we happen to hold — there are usually several equally short ways
+    // through. But it must be a link YOU just uncovered: the baseline is
+    // set when the route arrives, or the links that were already sitting
+    // there get credited to whatever you happened to click next.
+    const gained = links > degLinksSeen;
+    degLinksSeen = links;
+    warm = onChain || gained;
+    if (onChain) {
+      msg = `Oh yeah — ${name} is on the route (${links} of ${total} links found)`;
+    } else if (gained) {
+      msg = `Oh yeah — that opened up a link (${links} of ${total} found)`;
     } else {
-      // We don't know the answer yet, so we can't call that a wrong turn.
-      // Saying "yeah nah" here told you Brooks Wackerman was a dud when he
-      // was on the way. Remember the move — when the route arrives, the ones
-      // that were on it get their "Oh yeah" late rather than never.
-      neutral = true;
-      degPending.push(id);
-      msg = degMiss
-        ? 'Still not linked — Search deeper to unlock hot/cold hints'
-        : 'Still not linked — working out how far apart they are…';
-      maybeAutoRoute();
+      msg = `Yeah nah — ${name} isn't on the route I found (${links} of ${total})`;
+      n.addClass('tried'); // greyed, so you can see what you've ruled out
     }
     el.degWarm.textContent = msg;
     el.degWarm.classList.toggle('warm', warm);
@@ -690,7 +678,7 @@
     // Mirror it to the status pill — the card may be minimised, or your eyes
     // may be on the graph rather than on it.
     setStatus(msg, false, 3500);
-    if (!neutral) fireReaction(id, warm);
+    fireReaction(id, warm);
   }
 
   let degPos = null; // where you dragged it to, if you did
@@ -848,6 +836,8 @@
 
   function computeDegrees(opts = {}) {
     cy.elements().removeClass('on-path');
+    // The accent tells you which mode you're in: casual browse, or game on.
+    el.degrees.classList.toggle('game-on', !!degChain);
     const before = degPrev; // captured before this pass overwrites it
     const a = cy.getElementById(el.degA.value);
     const b = cy.getElementById(el.degB.value);
@@ -895,17 +885,15 @@
         el.degFind.hidden = false;
         el.degFind.textContent = 'Search deeper';
       } else {
-        el.degResult.innerHTML = '<span class="pe-hint">Not linked yet — expand to connect'
-          + ' them, or ask how far apart they really are.</span>';
+        el.degResult.innerHTML = '<span class="pe-hint">Not linked yet. Browse away — or'
+          + ' start the game with <strong>Find the link</strong>, and the hot/cold'
+          + ' calls begin.</span>';
         el.degFind.hidden = false;
         el.degFind.textContent = 'Find the link';
-        // Learn the real distance NOW, not on the first move — on a cold
-        // server the search takes a minute, and every click made before the
-        // answer lands can only be judged "neutral".
-        maybeAutoRoute();
       }
       el.degReveal.hidden = !degChain;
-      el.degChallenge.hidden = true; // there's already a game on
+      // No loaded game yet? Then a challenger is still on offer.
+      el.degChallenge.hidden = !!degChain;
       if (opts.announce) showWarmth(false, Infinity, before);
       degPrev = Infinity;
       updateDegLabel();
@@ -959,24 +947,12 @@
     el.degLabel.textContent = `Six degrees · ${state}`;
   }
 
-  // Ask MusicBrainz how far apart they actually are — that's the target.
-  // The first time you play a move on an unlinked pair, go and learn the real
-  // answer in the background — without it the game can only tell you whether
-  // you finished, not whether you're getting warmer.
-  function maybeAutoRoute() {
-    if (degChain || degMiss || degAuto) return;
-    degAuto = true;
-    runRouteSearch(true);
-  }
-
-  async function runRouteSearch(auto) {
+  async function runRouteSearch() {
     const a = cy.getElementById(el.degA.value);
     const b = cy.getElementById(el.degB.value);
     if (a.empty() || b.empty()) return;
-    if (!auto) {
-      el.degFind.disabled = true;
-      el.degFind.textContent = 'Searching…';
-    }
+    el.degFind.disabled = true;
+    el.degFind.textContent = 'Searching…';
     // Deep searches are slow enough (1 lookup/sec at MusicBrainz) that saying
     // so up front is kinder than a spinner that looks stuck.
     setStatus(`Searching MusicBrainz for a link between ${a.data('name')} and `
@@ -990,27 +966,7 @@
         // Whatever of the route is already joined up is the starting line —
         // not something the next click gets the credit for.
         degLinksSeen = chainLinksFound();
-        setStatus(`They're ${d.distance} steps apart — go find it`, false, 6000);
-        // Moves played while the answer was still coming in were only ever
-        // judged "neutral" — now we know the route, the ones that were ON it
-        // get their "Oh yeah" late rather than never.
-        const onRoute = degPending.filter((id) => degChain.some((s) => s.id === id)
-          && cy.getElementById(id).nonempty());
-        degPending = [];
-        // (Unless the pair already connected meanwhile — that join was
-        // celebrated live, no need to cheer twice.)
-        if (onRoute.length && !Number.isFinite(degPrev)) {
-          const names = onRoute.map((id) => cy.getElementById(id).data('name'));
-          const links = chainLinksFound();
-          const total = degChain.length - 1;
-          const msg = `Oh yeah — ${names.join(' and ')} ${names.length > 1 ? 'were' : 'was'}`
-            + ` on the route all along (${links} of ${total} links found)`;
-          el.degWarm.textContent = msg;
-          el.degWarm.classList.add('warm');
-          el.degWarm.hidden = false;
-          setStatus(msg, false, 5000);
-          onRoute.forEach((id, i) => setTimeout(() => fireReaction(id, true), i * 450));
-        }
+        setStatus(`They're ${d.distance} steps apart — game on, go find it`, false, 6000);
       } else {
         degMiss = {
           exhausted: !!d.exhausted, atLeast: d.atLeast, searched: d.searched, budget: d.budget,
@@ -1030,7 +986,7 @@
     }
   }
 
-  el.degFind.addEventListener('click', () => runRouteSearch(false));
+  el.degFind.addEventListener('click', () => runRouteSearch());
 
   // Fetch someone worth playing against and drop them on the canvas, which
   // (via addSeed) makes them the new target and starts a fresh game.
@@ -1064,13 +1020,11 @@
         degTarget = d.distance;
         degChain = d.path;
         degMiss = null;
-        degAuto = true; // no background search needed
         degLinksSeen = chainLinksFound();
         refreshDegrees();
       } else if (d.miss) {
         degMiss = d.miss;
-        degAuto = true; // the server already dug deep — only the cap remains
-        degDepth = 60;
+        degDepth = 60; // the server already dug to 40 — only the cap remains
         refreshDegrees();
       }
       setStatus(`Your challenger: ${d.artist.name}`, false, 5000);
@@ -1109,8 +1063,6 @@
     degDepth = 34;
     degJustExpanded = null;
     degLinksSeen = 0;
-    degPending = [];
-    degAuto = false;
     degMoves = 0;
     cy.nodes('.tried').removeClass('tried'); // fresh puzzle, clean slate
     el.degWarm.hidden = true;
@@ -1832,13 +1784,11 @@
     n.addClass('seed');
     if (!degUserPicked && !degRevealing) {
       degAimAt = a.id; // you went looking for this one — make it the target
-      degAuto = false; // a new pairing deserves its own route search
-      degMoves = 0; // and a fresh scoreboard
+      degMoves = 0; // a fresh scoreboard
       degMiss = null;
       degChain = null;
       degTarget = null;
       degLinksSeen = 0;
-      degPending = [];
       cy.nodes('.tried').removeClass('tried'); // fresh puzzle, clean slate
     }
     updateOverlays();
