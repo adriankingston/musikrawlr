@@ -1501,6 +1501,11 @@
       html += relSection('Bands', bands);
       html += relSection('Connections', others, true);
       const links = urlLinks(full);
+      // The companion catalogue browser runs alongside locally; the link only
+      // makes sense where it exists, so hide it on the public deploy.
+      if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+        links.unshift({ label: 'musikbrowsr ↗', href: `http://localhost:4800/#/artist/${n.id()}` });
+      }
       html += `<div class="p-section"><h3>Links</h3><div class="p-links">${links.map((l) => `<a href="${esc(l.href)}" target="_blank" rel="noopener">${esc(l.label)}</a>`).join('')}</div></div>`;
     } else {
       html += `<p class="pe-hint">Not fetched yet — expand to load dates, genres and connections.</p>`;
@@ -1856,4 +1861,21 @@
   // ---------- Boot ----------
   updateOverlays();
   queueGlow();
+
+  // Deep link: #seed=<mbid> opens straight onto that artist (musikbrowsr and
+  // any shared link land here). The hash is consumed so a reload of the now-
+  // grown graph doesn't silently re-seed.
+  async function seedFromHash() {
+    const m = location.hash.match(/^#seed=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
+    if (!m) return;
+    history.replaceState(null, '', location.pathname + location.search);
+    try {
+      const a = await api('/api/artist?id=' + m[1]);
+      addSeed({ id: a.id, name: a.name, type: a.type });
+    } catch (err) {
+      setStatus(`Couldn't open that link: ${err.message}`, true, 5000);
+    }
+  }
+  window.addEventListener('hashchange', seedFromHash);
+  seedFromHash();
 })();
