@@ -1504,7 +1504,7 @@
       // The companion catalogue browser runs alongside locally; the link only
       // makes sense where it exists, so hide it on the public deploy.
       if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-        links.unshift({ label: 'musikbrowsr ↗', href: `http://localhost:4800/#/artist/${n.id()}` });
+        links.unshift({ label: 'lykebrowsr ↗', href: `http://localhost:4800/#/artist/${n.id()}` });
       }
       html += `<div class="p-section"><h3>Links</h3><div class="p-links">${links.map((l) => `<a href="${esc(l.href)}" target="_blank" rel="noopener">${esc(l.label)}</a>`).join('')}</div></div>`;
     } else {
@@ -1861,6 +1861,12 @@
   // ---------- Boot ----------
   updateOverlays();
   queueGlow();
+
+  // The sister app only exists locally — no dead links on the public deploy.
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+    const fam = document.getElementById('family');
+    if (fam) fam.hidden = false;
+  }
 
   // Deep link: #seed=<mbid> opens straight onto that artist (musikbrowsr and
   // any shared link land here). The hash is consumed so a reload of the now-

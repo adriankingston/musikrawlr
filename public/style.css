@@ -104,6 +104,17 @@ body {
   letter-spacing: 0;
 }
 
+/* One platform, two lenses: the sister app rides in the header. */
+.family { border-left: 1px solid var(--line); padding-left: 16px; }
+.family .fam {
+  font-family: Zen Dots, Quantico, sans-serif;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: .02em;
+  text-decoration: none;
+}
+.family .fam:hover { color: var(--accent); }
+
 .search-wrap { position: relative; flex: 1; max-width: 460px; }
 #q {
   width: 100%;
