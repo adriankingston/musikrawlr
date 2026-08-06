@@ -19,6 +19,11 @@
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const PANEL_EMPTY = el.panel.innerHTML;
 
+  // The sister catalogue app: local port in dev, its Railway deploy in prod.
+  const LYKE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+    ? 'http://localhost:4800'
+    : 'https://lykebrowsr-production.up.railway.app';
+
   // ---------- API ----------
   async function api(path) {
     const r = await fetch(path);
@@ -1503,9 +1508,7 @@
       const links = urlLinks(full);
       // The companion catalogue browser runs alongside locally; the link only
       // makes sense where it exists, so hide it on the public deploy.
-      if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-        links.unshift({ label: 'lykebrowsr ↗', href: `http://localhost:4800/#/artist/${n.id()}` });
-      }
+      links.unshift({ label: 'lykebrowsr ↗', href: `${LYKE}/#/artist/${n.id()}` });
       html += `<div class="p-section"><h3>Links</h3><div class="p-links">${links.map((l) => `<a href="${esc(l.href)}" target="_blank" rel="noopener">${esc(l.label)}</a>`).join('')}</div></div>`;
     } else {
       html += `<p class="pe-hint">Not fetched yet — expand to load dates, genres and connections.</p>`;
@@ -1862,10 +1865,14 @@
   updateOverlays();
   queueGlow();
 
-  // The sister app only exists locally — no dead links on the public deploy.
-  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+  // Family switcher: point at whichever lykebrowsr matches where we're running.
+  {
     const fam = document.getElementById('family');
-    if (fam) fam.hidden = false;
+    if (fam) {
+      fam.hidden = false;
+      const a = fam.querySelector('a');
+      if (a) a.href = LYKE;
+    }
   }
 
   // Deep link: #seed=<mbid> opens straight onto that artist (musikbrowsr and
